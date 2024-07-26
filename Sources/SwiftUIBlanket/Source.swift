@@ -112,10 +112,48 @@ private struct Resolved {
     detents.first
   }
 
-  func nearestDetent(to offset: CGFloat) -> BlancketDetent.Resolved {
-    detents.min {
-      abs($0.offset - offset) < abs($1.offset - offset)
-    }!
+  func nearestDetent(to offset: CGFloat, velocity: CGFloat) -> BlancketDetent.Resolved {
+    
+    var lower: BlancketDetent.Resolved?
+    var higher: BlancketDetent.Resolved?
+    
+    for e in detents {
+      if e.offset <= offset {
+        lower = e
+        continue
+      }
+      
+      if higher == nil, lower != nil {
+        higher = e
+        break
+      }
+    }
+    
+    guard higher != nil else {
+      return detents.last!
+    }
+            
+    let lowerDistance = abs(lower!.offset - offset)
+    let higherDistance = abs(higher!.offset - offset)        
+    
+    var proposed: BlancketDetent.Resolved
+    
+    if lowerDistance < higherDistance {
+      proposed = lower!
+    } else {
+      proposed = higher!
+    }
+    
+    if velocity < -50 {
+      proposed = higher!
+    }
+    
+    if velocity > 50 {
+      proposed = lower!
+    }
+    
+    return proposed
+    
   }
 
 }
@@ -387,7 +425,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     if let customHeight {
       Log.debug("End - stretching")
 
-      let nearest = resolved.nearestDetent(to: customHeight)
+      let nearest = resolved.nearestDetent(to: customHeight, velocity: velocity.dy)
       
       Log.debug("\(nearest)")
 

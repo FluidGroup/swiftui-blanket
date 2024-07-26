@@ -1,57 +1,61 @@
 import SwiftUI
 
-struct XTranslationEffect: @preconcurrency GeometryEffect {
+struct XTranslationEffect: GeometryEffect {
   
   var offset: CGFloat = .zero
   
-  @Binding var presenting: CGFloat
+  let presenting: Binding<CGFloat>
     
   init(offset: CGFloat, presenting: Binding<CGFloat>) {
     self.offset = offset
-    self._presenting = presenting
+    self.presenting = presenting
   }
   
+  nonisolated
   var animatableData: CGFloat {
     get {
       offset
     }
     set {
-      DispatchQueue.main.async { [$presenting] in
-        $presenting.wrappedValue = newValue
+      DispatchQueue.main.async { [presenting] in
+        presenting.wrappedValue = newValue
       }
       offset = newValue
     }
   }
   
+  nonisolated
   func effectValue(size: CGSize) -> ProjectionTransform {
     return .init(.init(translationX: offset, y: 0))
   }
   
 }
 
-struct YTranslationEffect: @preconcurrency GeometryEffect {
+struct YTranslationEffect: GeometryEffect {
   
   var offset: CGFloat = .zero
   
-  @Binding var presenting: CGFloat
+  let presenting: Binding<CGFloat>
   
   init(offset: CGFloat, presenting: Binding<CGFloat>) {
     self.offset = offset
-    self._presenting = presenting
+    self.presenting = presenting
   }
   
+  nonisolated
   var animatableData: CGFloat {
     get {
       offset
     }
     set {
-      DispatchQueue.main.async { [$presenting] in
-        $presenting.wrappedValue = newValue
+      DispatchQueue.main.async { [presenting] in
+        presenting.wrappedValue = newValue
       }
       offset = newValue
     }
   }
   
+  nonisolated
   func effectValue(size: CGSize) -> ProjectionTransform {
     return .init(.init(translationX: 0, y: offset))
   }

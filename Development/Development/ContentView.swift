@@ -110,14 +110,12 @@ struct InlinePreview: View {
   }
 }
 
-@available(iOS 18.0, *)
 #Preview("isPresented"){
   
   return InlinePreview()
   
 }
 
-@available(iOS 18.0, *)
 #Preview("item"){
   
   struct Item: Identifiable {

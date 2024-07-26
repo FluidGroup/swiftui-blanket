@@ -158,7 +158,6 @@ private struct Resolved {
 
 }
 
-@available(iOS 18.0, *)
 public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   private let displayContent: () -> DisplayContent
@@ -241,9 +240,16 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         }
       }      
     }
+    .map { view in
+      if #available(iOS 18, *) {
+        
+        // make this draggable
+        view.gesture(_gesture(configuration: .init(ignoresScrollView: false, sticksToEdges: true)))
+      } else {
+        view.gesture(compatibleGesture())
+      }
+    }
 
-    // make this draggable
-    .gesture(_gesture(configuration: .init(ignoresScrollView: false, sticksToEdges: true)))
     ._animatableOffset(y: contentOffset.height, presenting: $presentingContentOffset.height)
     .map { view in
       switch configuration.mode {
@@ -364,6 +370,25 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         )
       }
     )
+  }
+  
+  private func compatibleGesture() -> some Gesture {
+    DragGesture(minimumDistance: 10, coordinateSpace: .named(_CoordinateSpaceTag.transition))
+      .onChanged { value in
+        onChange(
+          baseOffset: presentingContentOffset,
+          baseCustomHeight: customHeight ?? contentSize?.height ?? 0,
+          translation: value.translation
+        )
+      }
+      .onEnded { value in
+        onEnd(
+          velocity: .init(
+            dx: value.predictedEndLocation.x - value.location.x,
+            dy: value.predictedEndLocation.y - value.location.y
+          )
+        )
+      }
   }
 
   private func onChange(
@@ -535,7 +560,6 @@ private enum _CoordinateSpaceTag: Hashable {
   case transition
 }
 
-@available(iOS 18.0, *)
 extension View {
 
   public func blanket<Item, Content>(

@@ -388,7 +388,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       Log.debug("End - stretching")
 
       let nearest = resolved.nearestDetent(to: customHeight)
-
+      
       Log.debug("\(nearest)")
 
       let distance = CGSize(
@@ -409,11 +409,20 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
           initialVelocity: -mappedVelocity.dy
         )
       }
+      
+      @MainActor
+      func animation() {
+        if nearest == resolved.minDetent {
+          self.customHeight = nil
+        } else {
+          self.customHeight = nearest.offset
+        }
+      }
 
       if #available(iOS 17.0, *) {
 
         withAnimation(animationY) {
-          self.customHeight = nearest.offset
+          animation()
         } completion: {
 
         }
@@ -423,7 +432,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         withAnimation(
           animationY
         ) {
-          self.customHeight = nearest.offset
+          animation()
         }
       }
 

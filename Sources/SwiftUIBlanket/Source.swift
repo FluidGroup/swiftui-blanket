@@ -250,7 +250,16 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       if #available(iOS 18, *) {
         
         // make this draggable
-        view.gesture(_gesture(configuration: .init(ignoresScrollView: false, sticksToEdges: true)))
+        view
+          .gesture(
+            _gesture(
+              configuration: .init(
+                ignoresScrollView: false,
+                targetEdges: .top,
+                sticksToEdges: true
+              )
+            )
+          )
       } else {
         view.gesture(compatibleGesture())
       }

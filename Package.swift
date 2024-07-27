@@ -24,7 +24,7 @@ let package = Package(
     .package(url: "https://github.com/FluidGroup/swift-rubber-banding", from: "1.0.0"),
     .package(
       url: "https://github.com/FluidGroup/swiftui-scrollview-interoperable-drag-gesture",
-      from: "0.1.0"
+      from: "0.2.0"
     ),
   ],
   targets: [

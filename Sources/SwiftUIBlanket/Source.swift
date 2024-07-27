@@ -560,11 +560,16 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
           initialVelocity: mappedVelocity.dy
         )
       }
+      
+      @MainActor
+      func animation() {
+        contentOffset.height = targetOffset.height        
+      }
 
       if #available(iOS 17.0, *) {
 
         withAnimation(animationY) {
-          contentOffset.height = targetOffset.height
+          animation()
         } completion: {
 
         }
@@ -574,7 +579,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         withAnimation(
           animationY
         ) {
-          contentOffset.height = targetOffset.height
+          animation()
         }
       }
 

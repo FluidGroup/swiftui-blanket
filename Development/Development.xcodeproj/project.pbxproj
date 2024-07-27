@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		4B2B614E2C54020000A1EEE6 /* SwiftUIBlanket in Frameworks */ = {isa = PBXBuildFile; productRef = 4B2B614D2C54020000A1EEE6 /* SwiftUIBlanket */; };
+		4B4386EA2C54A29A002B7267 /* SwiftUIScrollViewInteroperableDragGesture in Frameworks */ = {isa = PBXBuildFile; productRef = 4B4386E92C54A29A002B7267 /* SwiftUIScrollViewInteroperableDragGesture */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,6 +46,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4B2B614E2C54020000A1EEE6 /* SwiftUIBlanket in Frameworks */,
+				4B4386EA2C54A29A002B7267 /* SwiftUIScrollViewInteroperableDragGesture in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -106,6 +108,7 @@
 			name = Development;
 			packageProductDependencies = (
 				4B2B614D2C54020000A1EEE6 /* SwiftUIBlanket */,
+				4B4386E92C54A29A002B7267 /* SwiftUIScrollViewInteroperableDragGesture */,
 			);
 			productName = Development;
 			productReference = 4B2B611F2C5401DB00A1EEE6 /* Development.app */;
@@ -191,6 +194,7 @@
 			mainGroup = 4B2B61162C5401DB00A1EEE6;
 			packageReferences = (
 				4B2B614C2C54020000A1EEE6 /* XCLocalSwiftPackageReference "../../swiftui-blanket" */,
+				4B4386E82C54A29A002B7267 /* XCLocalSwiftPackageReference "../submodules/swiftui-scrollview-interoperable-drag-gesture" */,
 			);
 			productRefGroup = 4B2B61202C5401DB00A1EEE6 /* Products */;
 			projectDirPath = "";
@@ -558,12 +562,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../../swiftui-blanket";
 		};
+		4B4386E82C54A29A002B7267 /* XCLocalSwiftPackageReference "../submodules/swiftui-scrollview-interoperable-drag-gesture" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../submodules/swiftui-scrollview-interoperable-drag-gesture";
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		4B2B614D2C54020000A1EEE6 /* SwiftUIBlanket */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SwiftUIBlanket;
+		};
+		4B4386E92C54A29A002B7267 /* SwiftUIScrollViewInteroperableDragGesture */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftUIScrollViewInteroperableDragGesture;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

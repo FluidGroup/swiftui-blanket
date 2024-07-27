@@ -27,64 +27,65 @@ struct SheetContent: View {
   var body: some View {
     ZStack {
       RoundedRectangle(cornerRadius: 20).fill(.background)
-      HStack {
-        VStack(alignment: .leading) {
-          
-          Text(title)
-            .font(.title)
-          
-          HStack {
-            VStack {
-              Text("Hello, World!")
-              Text("Hello, World!")
-              Text("Hello, World!")
-            }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 10).fill(.tertiary))
+      VStack {
+        HStack {
+          VStack(alignment: .leading) {
             
-            ScrollView {
-              VStack {
+            Text(title)
+              .font(.title)
+            
+            HStack {
+              RoundedRectangle(cornerRadius: 8)
+                .fill(.tertiary)
+                .frame(height: 100)
+              
+              ScrollView {
+                VStack {
+                  ForEach(0..<50) { index in
+                    RoundedRectangle(cornerRadius: 8)
+                      .fill(.tertiary)
+                      .frame(height: 30)
+                  }
+                }
+              }
+              .frame(height: 300)
+            }
+            
+            ScrollView(.horizontal) {
+              HStack {
                 ForEach(0..<50) { index in
-                  Text("Hello, World!")
+                  RoundedRectangle(cornerRadius: 8)
+                    .fill(.tertiary)
+                    .frame(width: 60, height: 60)
                 }
               }
             }
-            .frame(height: 300)
-          }
-          
-          ScrollView(.horizontal) {
+            
+            if isExpanded {
+              RoundedRectangle(cornerRadius: 8)
+                .fill(.tertiary)
+                .frame(height: 100)          
+            }
+            
             HStack {
-              Text("Horizontal ScrollView")
-              Text("Horizontal ScrollView")
-              Text("Horizontal ScrollView")
-            }
-          }
-          
-          if isExpanded {
-            VStack {
-              Text("Hello, World!")
-              Text("Hello, World!")
-              Text("Hello, World!")
-            }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 10).fill(.tertiary))
-          }
-          
-          HStack {
-            Spacer()
-            Button("Detail") {
-              withAnimation(.spring) {
-                isExpanded.toggle()
+              Spacer()
+              Button("Detail") {
+                withAnimation(.spring) {
+                  isExpanded.toggle()
+                }
               }
+              .buttonBorderShape(.roundedRectangle)
             }
-            .buttonBorderShape(.roundedRectangle)
           }
+          Spacer(minLength: 0)
         }
+        .padding()
         Spacer(minLength: 0)
       }
-      .padding()
-      .background(Color.red)
     }
+    .foregroundStyle(.primary)
+    .backgroundStyle(.orange)
+    .tint(.orange)
     .clipped()
     .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 0)
     .padding(8)

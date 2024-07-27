@@ -171,6 +171,11 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   @State private var maximumSize: CGSize?
   @State private var safeAreaInsets: EdgeInsets = .init()
 
+  // Ephemeral state
+  @State private var baseOffset: CGSize?
+  // Ephemeral state
+  @State private var baseCustomHeight: CGFloat?
+
   @State var customHeight: CGFloat?
 
   private let onDismiss: (() -> Void)?
@@ -335,6 +340,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   }
 
+
   @available(iOS 18.0, *)
   @available(macOS, unavailable)
   @available(tvOS, unavailable)
@@ -346,22 +352,31 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     -> ScrollViewInteroperableDragGesture
   {
 
-    let baseOffset = presentingContentOffset
-    let baseCustomHeight = customHeight ?? contentSize?.height ?? 0
-
     return ScrollViewInteroperableDragGesture(
       configuration: configuration,
       coordinateSpaceInDragging: .named(_CoordinateSpaceTag.transition),
       onChange: { value in
+        
+        if baseOffset == nil {
+          self.baseOffset = presentingContentOffset
+        }
+        
+        if baseCustomHeight == nil {
+          self.baseCustomHeight = customHeight ?? contentSize?.height ?? 0
+        }
 
         onChange(
-          baseOffset: baseOffset,
-          baseCustomHeight: baseCustomHeight,
+          baseOffset: baseOffset!,
+          baseCustomHeight: baseCustomHeight!,
           translation: value.translation
         )
 
       },
       onEnd: { value in
+        
+        self.baseOffset = nil
+        self.baseCustomHeight = nil
+        
         onEnd(
           velocity: .init(
             dx: value.velocity.width,
@@ -375,13 +390,26 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   private func compatibleGesture() -> some Gesture {
     DragGesture(minimumDistance: 10, coordinateSpace: .named(_CoordinateSpaceTag.transition))
       .onChanged { value in
+        
+        if baseOffset == nil {
+          self.baseOffset = presentingContentOffset
+        }
+        
+        if baseCustomHeight == nil {
+          self.baseCustomHeight = customHeight ?? contentSize?.height ?? 0
+        }
+        
         onChange(
-          baseOffset: presentingContentOffset,
-          baseCustomHeight: customHeight ?? contentSize?.height ?? 0,
+          baseOffset: baseOffset!,
+          baseCustomHeight: baseCustomHeight!,
           translation: value.translation
         )
       }
       .onEnded { value in
+        
+        self.baseOffset = nil
+        self.baseCustomHeight = nil
+                
         onEnd(
           velocity: .init(
             dx: value.predictedEndLocation.x - value.location.x,

@@ -173,6 +173,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   // Ephemeral state
   @State private var baseOffset: CGSize?
+  @State private var baseTranslation: CGSize?
   // Ephemeral state
   @State private var baseCustomHeight: CGFloat?
 
@@ -356,26 +357,13 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       configuration: configuration,
       coordinateSpaceInDragging: .named(_CoordinateSpaceTag.transition),
       onChange: { value in
-        
-        if baseOffset == nil {
-          self.baseOffset = presentingContentOffset
-        }
-        
-        if baseCustomHeight == nil {
-          self.baseCustomHeight = customHeight ?? contentSize?.height ?? 0
-        }
 
         onChange(
-          baseOffset: baseOffset!,
-          baseCustomHeight: baseCustomHeight!,
           translation: value.translation
         )
 
       },
       onEnd: { value in
-        
-        self.baseOffset = nil
-        self.baseCustomHeight = nil
         
         onEnd(
           velocity: .init(
@@ -391,25 +379,12 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     DragGesture(minimumDistance: 10, coordinateSpace: .named(_CoordinateSpaceTag.transition))
       .onChanged { value in
         
-        if baseOffset == nil {
-          self.baseOffset = presentingContentOffset
-        }
-        
-        if baseCustomHeight == nil {
-          self.baseCustomHeight = customHeight ?? contentSize?.height ?? 0
-        }
-        
         onChange(
-          baseOffset: baseOffset!,
-          baseCustomHeight: baseCustomHeight!,
           translation: value.translation
         )
       }
       .onEnded { value in
-        
-        self.baseOffset = nil
-        self.baseCustomHeight = nil
-                
+                        
         onEnd(
           velocity: .init(
             dx: value.predictedEndLocation.x - value.location.x,
@@ -420,12 +395,16 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   }
 
   private func onChange(
-    baseOffset: CGSize,
-    baseCustomHeight: CGFloat,
     translation: CGSize
   ) {
 
     guard let resolved else { return }
+            
+    if baseCustomHeight == nil {
+      self.baseCustomHeight = customHeight ?? contentSize?.height ?? 0
+    }
+    
+    let baseCustomHeight = self.baseCustomHeight!
 
     let proposedHeight = baseCustomHeight - translation.height
 
@@ -433,18 +412,30 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     let highestDetent = resolved.maxDetent.offset
 
     if proposedHeight < lowestDetent {
-
+      
       // moving view
+      
+      if baseOffset == nil {
+        self.baseOffset = presentingContentOffset
+      }
+      
+      if baseTranslation == nil {
+        self.baseTranslation = translation
+      }
+      
+      let baseOffset = self.baseOffset!
+      let baseTranslation = self.baseTranslation!
 
       Log.debug("Use intrinsict height")
 
+      // release hard frame
       customHeight = nil
 
       let proposedOffset = CGSize(
-        width: baseOffset.width + translation.width,
-        height: baseOffset.height + translation.height
+        width: baseOffset.width + translation.width - baseTranslation.width,
+        height: baseOffset.height + translation.height - baseTranslation.height
       )
-
+      
       withAnimation(.interactiveSpring()) {
 
         contentOffset.height = rubberBand(
@@ -457,8 +448,12 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       }
 
     } else if proposedHeight > highestDetent {
+      
+      // reaching max
 
       Log.debug("reached max")
+      
+      // set hard frame
       customHeight = rubberBand(value: proposedHeight, min: highestDetent, max: highestDetent, bandLength: 20)
 
     } else {
@@ -466,12 +461,18 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       // stretching view
       Log.debug("Use custom height", proposedHeight)
       contentOffset.height = 0
+      
+      // set hard frame
       customHeight = proposedHeight
     }
 
   }
 
   private func onEnd(velocity: CGVector) {
+        
+    self.baseOffset = nil
+    self.baseTranslation = nil
+    self.baseCustomHeight = nil
 
     guard let resolved else { return }
 

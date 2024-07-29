@@ -203,6 +203,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   public func body(content: Content) -> some View {
 
+    let _ = print("body")
+    
     ZStack {
       content
       _display
@@ -210,7 +212,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   }
 
   private var _display: some View {
-
+    
     VStack {
 
       Spacer()
@@ -254,8 +256,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
           .gesture(
             _gesture(
               configuration: .init(
-                ignoresScrollView: false,
-                targetEdges: .top,
+                ignoresScrollView: false,                
+                targetEdges: .top,              
                 sticksToEdges: true
               )
             )
@@ -364,6 +366,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
     return ScrollViewInteroperableDragGesture(
       configuration: configuration,
+      isScrollLockEnabled: true,
       coordinateSpaceInDragging: .named(_CoordinateSpaceTag.transition),
       onChange: { value in
 

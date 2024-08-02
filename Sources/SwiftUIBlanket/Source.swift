@@ -101,6 +101,13 @@ public struct BlanketConfiguration {
 }
 
 private struct Resolved {
+  
+  struct State {
+    
+    let lower: BlancketDetent.Resolved?
+    let higher: BlancketDetent.Resolved?
+    
+  }
 
   let detents: [BlancketDetent.Resolved]
 
@@ -111,8 +118,8 @@ private struct Resolved {
   var minDetent: BlancketDetent.Resolved! {
     detents.first
   }
-
-  func nearestDetent(to offset: CGFloat, velocity: CGFloat) -> BlancketDetent.Resolved {
+  
+  func range(for offset: CGFloat) -> (lower: BlancketDetent.Resolved?, higher: BlancketDetent.Resolved?) {
     
     var lower: BlancketDetent.Resolved?
     var higher: BlancketDetent.Resolved?
@@ -128,6 +135,14 @@ private struct Resolved {
         break
       }
     }
+    
+    return (lower, higher)
+  }
+
+
+  func nearestDetent(to offset: CGFloat, velocity: CGFloat) -> BlancketDetent.Resolved {
+    
+    let (lower, higher) = range(for: offset)
     
     guard higher != nil else {
       return detents.last!
@@ -184,6 +199,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   @State private var hidingOffset: CGFloat = 0
 
   @State private var resolved: Resolved?
+  
+  @State private var isScrollLockEnabled: Bool = true
 
   private let detents: Set<BlancketDetent>
 
@@ -254,13 +271,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         // make this draggable
         view
           .gesture(
-            _gesture(
-              configuration: .init(
-                ignoresScrollView: false,                
-                targetEdges: .top,              
-                sticksToEdges: true
-              )
-            )
+            _gesture()
           )
       } else {
         view.gesture(compatibleGesture())
@@ -358,15 +369,19 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   @available(tvOS, unavailable)
   @available(watchOS, unavailable)
   @available(visionOS, unavailable)
-  private func _gesture(
-    configuration: ScrollViewInteroperableDragGesture.Configuration
-  )
+  private func _gesture()
     -> ScrollViewInteroperableDragGesture
   {
+    
+    Log.debug("Load gesture", isScrollLockEnabled)
 
     return ScrollViewInteroperableDragGesture(
-      configuration: configuration,
-      isScrollLockEnabled: true,
+      configuration: .init(
+        ignoresScrollView: false,                
+        targetEdges: .top,              
+        sticksToEdges: false
+      ),
+      isScrollLockEnabled: $isScrollLockEnabled,
       coordinateSpaceInDragging: .named(_CoordinateSpaceTag.transition),
       onChange: { value in
 
@@ -467,12 +482,20 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       
       // set hard frame
       customHeight = rubberBand(value: proposedHeight, min: highestDetent, max: highestDetent, bandLength: 20)
+      
+      isScrollLockEnabled = false
 
     } else {
 
       // stretching view
       Log.debug("Use custom height", proposedHeight)
       contentOffset.height = 0
+      
+      let currentRange = resolved.range(for: proposedHeight)
+      
+      print(currentRange)
+      
+      isScrollLockEnabled = true
       
       // set hard frame
       customHeight = proposedHeight

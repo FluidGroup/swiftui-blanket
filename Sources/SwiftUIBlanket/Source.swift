@@ -219,8 +219,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   }
 
   public func body(content: Content) -> some View {
-
-    let _ = print("body")
     
     ZStack {
       content
@@ -492,9 +490,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       contentOffset.height = 0
       
       let currentRange = resolved.range(for: proposedHeight)
-      
-      print(currentRange)
-      
+            
       isScrollLockEnabled = true
       
       // set hard frame
@@ -508,6 +504,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     self.baseOffset = nil
     self.baseTranslation = nil
     self.baseCustomHeight = nil
+    
+    isScrollLockEnabled = false
 
     guard let resolved else { return }
 

@@ -371,8 +371,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     -> ScrollViewInteroperableDragGesture
   {
     
-    Log.debug("Load gesture", isScrollLockEnabled)
-
     return ScrollViewInteroperableDragGesture(
       configuration: .init(
         ignoresScrollView: false,                
@@ -475,8 +473,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     } else if proposedHeight > highestDetent {
       
       // reaching max
-
-      Log.debug("reached max")
       
       // set hard frame
       customHeight = rubberBand(value: proposedHeight, min: highestDetent, max: highestDetent, bandLength: 20)
@@ -486,11 +482,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     } else {
 
       // stretching view
-      Log.debug("Use custom height", proposedHeight)
       contentOffset.height = 0
-      
-      let currentRange = resolved.range(for: proposedHeight)
-            
+                  
       isScrollLockEnabled = true
       
       // set hard frame
@@ -505,10 +498,24 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     self.baseTranslation = nil
     self.baseCustomHeight = nil
     
-    isScrollLockEnabled = false
-
     guard let resolved else { return }
-
+    
+    if let customHeight {      
+      
+      let currentRange = resolved.range(for: customHeight)
+      
+      Log.debug(customHeight, resolved.maxDetent.offset)
+      
+      if customHeight >= resolved.maxDetent.offset {
+        isScrollLockEnabled = false
+      } else {
+        isScrollLockEnabled = true
+      }
+      
+    } else {
+      isScrollLockEnabled = true
+    }
+    
     if let customHeight {
       Log.debug("End - stretching")
 

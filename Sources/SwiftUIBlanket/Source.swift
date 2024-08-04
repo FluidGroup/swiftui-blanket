@@ -468,7 +468,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
     let lowestDetent = resolved.minDetent.offset
     let highestDetent = resolved.maxDetent.offset
-
+    
     if proposedHeight < lowestDetent {
       
       // moving view
@@ -488,7 +488,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
       // release hard frame
       customHeight = nil
-      isScrollLockEnabled = false
+      isScrollLockEnabled = true
 
       let proposedOffset = CGSize(
         width: baseOffset.width + translation.width - baseTranslation.width,
@@ -549,7 +549,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       }
       
     } else {
-      isScrollLockEnabled = true
+      isScrollLockEnabled = false
     }
     
     Log.debug("End", "isScrollLockEnabled", isScrollLockEnabled)

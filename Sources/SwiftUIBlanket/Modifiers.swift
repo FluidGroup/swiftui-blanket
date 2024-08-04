@@ -4,11 +4,11 @@ struct XTranslationEffect: GeometryEffect {
   
   var offset: CGFloat = .zero
   
-  let presenting: Binding<CGFloat>
+  let onUpdate: @MainActor (CGFloat) -> Void
     
-  init(offset: CGFloat, presenting: Binding<CGFloat>) {
+  init(offset: CGFloat, onUpdate: @escaping @MainActor (CGFloat) -> Void) {
     self.offset = offset
-    self.presenting = presenting
+    self.onUpdate = onUpdate
   }
   
   nonisolated
@@ -17,8 +17,8 @@ struct XTranslationEffect: GeometryEffect {
       offset
     }
     set {
-      DispatchQueue.main.async { [presenting] in
-        presenting.wrappedValue = newValue
+      Task { @MainActor [onUpdate] in 
+        onUpdate(newValue)
       }
       offset = newValue
     }
@@ -35,11 +35,11 @@ struct YTranslationEffect: GeometryEffect {
   
   var offset: CGFloat = .zero
   
-  let presenting: Binding<CGFloat>
+  let onUpdate: @MainActor (CGFloat) -> Void
   
-  init(offset: CGFloat, presenting: Binding<CGFloat>) {
+  init(offset: CGFloat, onUpdate: @escaping @MainActor (CGFloat) -> Void) {
     self.offset = offset
-    self.presenting = presenting
+    self.onUpdate = onUpdate
   }
   
   nonisolated
@@ -48,8 +48,8 @@ struct YTranslationEffect: GeometryEffect {
       offset
     }
     set {
-      DispatchQueue.main.async { [presenting] in
-        presenting.wrappedValue = newValue
+      Task { @MainActor [onUpdate] in 
+        onUpdate(newValue)
       }
       offset = newValue
     }
@@ -65,13 +65,13 @@ struct YTranslationEffect: GeometryEffect {
 extension View {
   
   /// Applies offset effect that is animatable against ``SwiftUI/View/offset``
-  func _animatableOffset(x: CGFloat, presenting: Binding<CGFloat>) -> some View {
-    self.modifier(XTranslationEffect(offset: x, presenting: presenting))
+  func _animatableOffset(x: CGFloat, onUpdate: @escaping @MainActor (CGFloat) -> Void) -> some View {
+    self.modifier(XTranslationEffect(offset: x, onUpdate: onUpdate))
   }
   
   /// Applies offset effect that is animatable against ``SwiftUI/View/offset``
-  func _animatableOffset(y: CGFloat, presenting: Binding<CGFloat>) -> some View {
-    self.modifier(YTranslationEffect(offset: y, presenting: presenting))
+  func _animatableOffset(y: CGFloat, onUpdate: @escaping @MainActor (CGFloat) -> Void) -> some View {
+    self.modifier(YTranslationEffect(offset: y, onUpdate: onUpdate))
   }
   
 }

@@ -10,7 +10,7 @@ import SwiftUIBlanket
 
 struct ContentView: View {
   var body: some View {
-    InlinePreview()
+    InlinePreview(detents: [])
   }
 }
 
@@ -96,6 +96,12 @@ struct InlinePreview: View {
   
   @State var isPresented = false
   
+  private let detents: Set<BlanketDetent>
+  
+  init(detents: Set<BlanketDetent>) {
+    self.detents = detents
+  }
+  
   var body: some View {
     VStack {
       Button("Show") {
@@ -107,14 +113,19 @@ struct InlinePreview: View {
     }
     .blanket(isPresented: $isPresented) {
       SheetContent(title: "This is a blanket")
+        .blanketContentDetents(detents)
     }
   }
 }
 
-#Preview("isPresented"){
+#Preview("isPresented default"){
   
-  return InlinePreview()
+  return InlinePreview(detents: [])
   
+}
+
+#Preview("[.content, .fraction(1)]") {
+  return InlinePreview(detents: [.content, .fraction(1)])
 }
 
 #Preview("item"){

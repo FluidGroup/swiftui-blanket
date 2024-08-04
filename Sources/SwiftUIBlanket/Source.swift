@@ -16,7 +16,7 @@ enum Log {
 
 }
 
-public struct BlancketDetent: Hashable {
+public struct BlanketDetent: Hashable {
 
   struct Context {
     let maxDetentValue: CGFloat
@@ -32,7 +32,7 @@ public struct BlancketDetent: Hashable {
 
   struct Resolved: Hashable {
 
-    let source: BlancketDetent
+    let source: BlanketDetent
     let offset: CGFloat
 
   }
@@ -104,25 +104,25 @@ private struct Resolved {
   
   struct State {
     
-    let lower: BlancketDetent.Resolved?
-    let higher: BlancketDetent.Resolved?
+    let lower: BlanketDetent.Resolved?
+    let higher: BlanketDetent.Resolved?
     
   }
 
-  let detents: [BlancketDetent.Resolved]
+  let detents: [BlanketDetent.Resolved]
 
-  var maxDetent: BlancketDetent.Resolved {
+  var maxDetent: BlanketDetent.Resolved {
     detents.last!
   }
 
-  var minDetent: BlancketDetent.Resolved! {
+  var minDetent: BlanketDetent.Resolved! {
     detents.first
   }
   
-  func range(for offset: CGFloat) -> (lower: BlancketDetent.Resolved?, higher: BlancketDetent.Resolved?) {
+  func range(for offset: CGFloat) -> (lower: BlanketDetent.Resolved?, higher: BlanketDetent.Resolved?) {
     
-    var lower: BlancketDetent.Resolved?
-    var higher: BlancketDetent.Resolved?
+    var lower: BlanketDetent.Resolved?
+    var higher: BlanketDetent.Resolved?
     
     for e in detents {
       if e.offset <= offset {
@@ -140,7 +140,7 @@ private struct Resolved {
   }
 
 
-  func nearestDetent(to offset: CGFloat, velocity: CGFloat) -> BlancketDetent.Resolved {
+  func nearestDetent(to offset: CGFloat, velocity: CGFloat) -> BlanketDetent.Resolved {
     
     let (lower, higher) = range(for: offset)
     
@@ -151,7 +151,7 @@ private struct Resolved {
     let lowerDistance = abs(lower!.offset - offset)
     let higherDistance = abs(higher!.offset - offset)        
     
-    var proposed: BlancketDetent.Resolved
+    var proposed: BlanketDetent.Resolved
     
     if lowerDistance < higherDistance {
       proposed = lower!
@@ -173,16 +173,32 @@ private struct Resolved {
 
 }
 
-public struct BlanketModifier<DisplayContent: View>: ViewModifier {
+@MainActor
+private final class Model: ObservableObject {
+  
+  var presentingContentOffset: CGSize
+  
+  init(presentingContentOffset: CGSize) {
+    self.presentingContentOffset = presentingContentOffset
+  }
+  
+}
 
+private struct ContentDescriptor: Hashable {
+  var contentSize: CGSize?
+  var detents: Set<BlanketDetent>?
+}
+
+public struct BlanketModifier<DisplayContent: View>: ViewModifier {
+  
   private let displayContent: () -> DisplayContent
   @Binding var isPresented: Bool
 
   @State private var contentOffset: CGSize = .zero
-  @State private var presentingContentOffset: CGSize = .zero
   @State private var targetOffset: CGSize = .zero
 
-  @State private var contentSize: CGSize?
+  @State private var contentDescriptor: ContentDescriptor = .init()
+
   @State private var maximumSize: CGSize?
   @State private var safeAreaInsets: EdgeInsets = .init()
 
@@ -201,8 +217,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   @State private var resolved: Resolved?
   
   @State private var isScrollLockEnabled: Bool = true
-
-  private let detents: Set<BlancketDetent>
+  
+  @StateObject private var model: Model = .init(presentingContentOffset: .zero)
 
   private let configuration: BlanketConfiguration = .init(mode: .inline(.init()))
 
@@ -214,8 +230,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     self._isPresented = isPresented
     self.onDismiss = onDismiss
     self.displayContent = displayContent
-
-    self.detents = .init([.content, .fraction(0.8), .fraction(1)])
   }
 
   public func body(content: Content) -> some View {
@@ -227,16 +241,19 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   }
 
   private var _display: some View {
-    
-    VStack {
+        
+    return VStack {
 
       Spacer()
         .layoutPriority(1)
 
       displayContent()
+        .onPreferenceChange(BlanketContentDetentsPreferenceKey.self, perform: { detents in
+          self.contentDescriptor.detents = detents
+        })
         .readingGeometry(
           transform: \.size,
-          target: $contentSize
+          target: $contentDescriptor.contentSize
         )
         .frame(height: customHeight)
 
@@ -276,7 +293,11 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       }
     }
 
-    ._animatableOffset(y: contentOffset.height, presenting: $presentingContentOffset.height)
+    ._animatableOffset(
+      y: contentOffset.height,
+      onUpdate: { height in
+        model.presentingContentOffset.height = height
+    })
     .map { view in
       switch configuration.mode {
       case .inline:
@@ -302,11 +323,17 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         }
       }
     }
-    .onChange(of: contentSize) { contentSize in
-      guard let contentSize else { return }
-      guard customHeight == nil else { return }
-      resolve(contentSize: contentSize)
-    }
+    .onChange(
+      of: contentDescriptor,
+      perform: { descriptor in      
+        
+        guard let contentSize = descriptor.contentSize,
+              let detents = descriptor.detents else { return }      
+        guard customHeight == nil else { return }
+        
+        resolve(contentSize: contentSize, detents: detents)
+        
+    })
     .onChange(of: hidingOffset) { hidingOffset in
       if isPresented == false {
         // init
@@ -315,21 +342,29 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     }
   }
 
-  private func resolve(contentSize: CGSize) {
+  private func resolve(contentSize: CGSize, detents: Set<BlanketDetent>) {
 
     guard let maximumSize else {
       return
     }
 
     Log.debug("resolve")
+    
+    let usingDetents: Set<BlanketDetent>
+    
+    if detents.isEmpty {
+      usingDetents = .init(arrayLiteral: .content)
+    } else {      
+      usingDetents = consume detents
+    }
 
-    let context = BlancketDetent.Context(
+    let context = BlanketDetent.Context(
       maxDetentValue: maximumSize.height - 30,
       contentHeight: contentSize.height
     )
 
-    var resolved = detents.map {
-      return BlancketDetent.Resolved(
+    var resolved = usingDetents.map {
+      return BlanketDetent.Resolved(
         source: $0,
         offset: $0.resolve(in: context)
       )
@@ -350,7 +385,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       }
     }
     
-    let hiddenDetent = BlancketDetent.Resolved(
+    let hiddenDetent = BlanketDetent.Resolved(
       source: .fraction(0),
       offset: (contentSize.height + safeAreaInsets.bottom)
     )
@@ -424,7 +459,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     guard let resolved else { return }
             
     if baseCustomHeight == nil {
-      self.baseCustomHeight = customHeight ?? contentSize?.height ?? 0
+      self.baseCustomHeight = customHeight ?? contentDescriptor.contentSize?.height ?? 0
     }
     
     let baseCustomHeight = self.baseCustomHeight!
@@ -439,7 +474,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       // moving view
       
       if baseOffset == nil {
-        self.baseOffset = presentingContentOffset
+        self.baseOffset = model.presentingContentOffset
       }
       
       if baseTranslation == nil {
@@ -453,6 +488,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
       // release hard frame
       customHeight = nil
+      isScrollLockEnabled = false
 
       let proposedOffset = CGSize(
         width: baseOffset.width + translation.width - baseTranslation.width,
@@ -515,6 +551,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     } else {
       isScrollLockEnabled = true
     }
+    
+    Log.debug("End", "isScrollLockEnabled", isScrollLockEnabled)
     
     if let customHeight {
       Log.debug("End - stretching")
@@ -630,7 +668,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 }
 
 private enum _CoordinateSpaceTag: Hashable {
-  case pointInView
+//  case pointInView
   case transition
 }
 
@@ -673,3 +711,66 @@ extension View {
 
 }
 
+private struct BlanketContentWrapperView<Content: View>: View {
+  
+  let content: Content
+  let detents: Set<BlanketDetent>
+  
+  init(
+    content: Content,
+    detents: Set<BlanketDetent>
+  ) {
+    self.content = content
+    self.detents = detents
+  }
+  
+  var body: some View {
+    content
+      .preference(key: BlanketContentDetentsPreferenceKey.self, value: detents)
+  }
+  
+}
+
+enum BlanketContentDetentsPreferenceKey: PreferenceKey {
+  
+  static var defaultValue: Set<BlanketDetent> {
+    .init()
+  }
+  
+  static func reduce(value: inout Set<BlanketDetent>, nextValue: () -> Set<BlanketDetent>) {
+    value = nextValue()
+  }
+  
+}
+
+extension View {
+  
+  public func blanketContentDetents(
+    _ firstDetent: BlanketDetent,
+    _ detents: BlanketDetent...
+  ) -> some View {
+    self.blanketContentDetents(CollectionOfOne(firstDetent) + detents) 
+  }
+  
+  public func blanketContentDetents(
+    _ detent: BlanketDetent
+  ) -> some View {
+    self.blanketContentDetents(CollectionOfOne(detent))        
+  }
+  
+  public func blanketContentDetents(
+    _ detents: some Collection<BlanketDetent>
+  ) -> some View {
+    self.blanketContentDetents(Set.init(detents))
+  }
+    
+  public func blanketContentDetents(
+    _ detens: Set<BlanketDetent>
+  ) -> some View {
+    BlanketContentWrapperView(
+      content: self,
+      detents: detens
+    )
+  }
+  
+}

@@ -534,27 +534,9 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     self.baseTranslation = nil
     self.baseCustomHeight = nil
     
-    guard let resolved else { return }
+    guard let resolved else { return }    
     
-    if let customHeight {      
-      
-      let currentRange = resolved.range(for: customHeight)
-      
-      Log.debug(customHeight, resolved.maxDetent.offset)
-      
-      if customHeight >= resolved.maxDetent.offset {
-        isScrollLockEnabled = false
-      } else {
-        isScrollLockEnabled = true
-      }
-      
-    } else {
-      isScrollLockEnabled = false
-    }
-    
-    Log.debug("End", "isScrollLockEnabled", isScrollLockEnabled)
-    
-    if let customHeight {
+    if let customHeight = self.customHeight {
       Log.debug("End - stretching")
 
       let nearest = resolved.nearestDetent(to: customHeight, velocity: velocity.dy)
@@ -663,6 +645,23 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
     }
 
+    // managing scrollview
+    
+    if let customHeight = self.customHeight {      
+      
+      let currentRange = resolved.range(for: customHeight)
+      
+      Log.debug(customHeight, resolved.maxDetent.offset)
+      
+      if customHeight >= resolved.maxDetent.offset {
+        isScrollLockEnabled = false
+      } else {
+        isScrollLockEnabled = true
+      }
+      
+    } else {
+      isScrollLockEnabled = true
+    }
   }
 
 }

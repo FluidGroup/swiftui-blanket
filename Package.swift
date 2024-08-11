@@ -7,7 +7,7 @@ let package = Package(
   name: "swiftui-blanket",
   platforms: [
     .macOS(.v10_15),
-    .iOS(.v15),
+    .iOS(.v16),
     .tvOS(.v13),
     .watchOS(.v6),
     .macCatalyst(.v13)

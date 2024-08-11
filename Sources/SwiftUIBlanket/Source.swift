@@ -187,6 +187,7 @@ private final class Model: ObservableObject {
 
 private struct ContentDescriptor: Hashable {
   var contentSize: CGSize?
+  var maximumSize: CGSize?
   var detents: Set<BlanketDetent>?
 }
 
@@ -200,7 +201,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   @State private var contentDescriptor: ContentDescriptor = .init()
 
-  @State private var maximumSize: CGSize?
   @State private var safeAreaInsets: EdgeInsets = .init()
 
   // Ephemeral state
@@ -235,14 +235,19 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   public func body(content: Content) -> some View {
     
-    ZStack {
-      content
-        .readingGeometry(
-          transform: \.size,
-          target: $maximumSize
-        )     
-      _display
-    }
+    content
+      .modifier(Modifier.init(onChange: { size in
+        
+        contentDescriptor.maximumSize = size
+        
+        dipatchResolve(newValue: contentDescriptor, oldValue: nil)
+        
+      }))
+      .overlay(
+        _display,
+        alignment: .bottom        
+      )
+
   }
 
   private var _display: some View {
@@ -263,8 +268,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         .frame(height: customHeight)
 
     }
-
-  
     .map { view in
       switch configuration.mode {
       case .inline:
@@ -305,7 +308,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
           .background(presentation.backgroundColor.opacity(isPresented ? 0.2 : 0))
       }
     }
-    .animation(.smooth, value: isPresented)
+    .animation(.smooth, value: isPresented)   
     .readingGeometry(
       transform: \.safeAreaInsets,
       target: $safeAreaInsets
@@ -321,22 +324,14 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         }
       }
     }   
-    .onChangeWithPrevious(of: contentDescriptor, emitsInitial: true, perform: { newValue, oldValue in
-      
-      guard newValue.contentSize != oldValue?.contentSize else {
-        return
-      }
-      
-      guard newValue.detents != oldValue?.detents else {
-        return
-      }      
-      
-      guard let contentSize = newValue.contentSize,
-            let detents = newValue.detents else { return }      
-      
-      guard customHeight == nil else { return }
-      
-      resolve(contentSize: contentSize, detents: detents)
+    .onChangeWithPrevious(
+      of: contentDescriptor,
+      emitsInitial: true,
+      perform: {
+        newValue,
+        oldValue in
+        
+        dipatchResolve(newValue: newValue, oldValue: oldValue)
       
     })   
     .onChange(of: hidingOffset) { hidingOffset in
@@ -346,14 +341,45 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       }
     }
   }
-
-  private func resolve(contentSize: CGSize, detents: Set<BlanketDetent>) {
-
-    guard let maximumSize else {
+  
+  private func dipatchResolve(
+    newValue: ContentDescriptor,
+    oldValue: ContentDescriptor?
+  ) {
+    guard newValue.contentSize != oldValue?.contentSize else {
       return
     }
+    
+    guard newValue.detents != oldValue?.detents else {
+      return
+    }    
+    
+    guard newValue.maximumSize != oldValue?.maximumSize else {
+      return
+    }  
+    
+    guard 
+      let contentSize = newValue.contentSize,
+      let detents = newValue.detents,
+      let maximumSize = newValue.maximumSize
+    else { return }      
+    
+    guard customHeight == nil else { return }
+    
+    resolve(
+      contentSize: contentSize,
+      detents: detents,
+      maximumSize: maximumSize
+    )
+  }
 
-    Log.debug("resolve")
+  private func resolve(
+    contentSize: CGSize,
+    detents: Set<BlanketDetent>,
+    maximumSize: CGSize
+  ) {
+
+    Log.debug("resolve", maximumSize)
     
     let usingDetents: Set<BlanketDetent>
     
@@ -777,4 +803,83 @@ extension View {
     )
   }
   
+}
+
+private enum GeometryReaderPreferenceKey<Projected: Equatable>: PreferenceKey {
+  
+  static var defaultValue: Projected? {
+    return nil
+  }
+  
+  static func reduce(value: inout Value, nextValue: () -> Projected?) {
+    let next = nextValue()
+    value = next
+  }
+  
+}
+
+private struct Modifier: ViewModifier {
+  
+  @StateObject var proxy: Proxy = .init()
+  private let onChange: (CGSize) -> Void
+  
+  init(
+    onChange: @escaping (CGSize) -> Void
+  ) {
+    self.onChange = onChange
+  }
+  
+  func body(content: Content) -> some View {
+    content
+      .onReceive(proxy.$size) { size in
+        onChange(size ?? .zero)
+      }
+      .background(
+        _Layout(proxy: proxy) {
+          Color.clear   
+        }
+      )
+    
+  }
+  
+}
+
+@MainActor
+private final class Proxy: ObservableObject {
+  @Published var size: CGSize?
+}
+
+private struct _Layout: Layout {
+  
+  private let proxy: Proxy
+  
+  init(proxy: Proxy) {
+    self.proxy = proxy
+  }
+  
+  func placeSubviews(
+    in bounds: CGRect,
+    proposal: ProposedViewSize,
+    subviews: Subviews,
+    cache: inout ()
+  ) {
+    for subview in subviews {
+      subview
+        .place(
+          at: bounds.origin,
+          proposal: .init(
+            width: proposal.width,
+            height: proposal.height
+          )
+        )
+    }
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let size = CGSize.init(width: proposal.width ?? 0 , height: proposal.height ?? 0)
+    Task { @MainActor in
+      proxy.size = size
+    }
+    return size
+  }
 }

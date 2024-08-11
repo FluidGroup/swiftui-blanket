@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		4B2B614E2C54020000A1EEE6 /* SwiftUIBlanket in Frameworks */ = {isa = PBXBuildFile; productRef = 4B2B614D2C54020000A1EEE6 /* SwiftUIBlanket */; };
 		4B4386EA2C54A29A002B7267 /* SwiftUIScrollViewInteroperableDragGesture in Frameworks */ = {isa = PBXBuildFile; productRef = 4B4386E92C54A29A002B7267 /* SwiftUIScrollViewInteroperableDragGesture */; };
+		4B4A7F732C68BF640028FD9C /* newValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4A7F722C68BF640028FD9C /* newValue.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +33,7 @@
 		4B2B611F2C5401DB00A1EEE6 /* Development.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Development.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4B2B612F2C5401DD00A1EEE6 /* DevelopmentTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DevelopmentTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4B2B61392C5401DD00A1EEE6 /* DevelopmentUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DevelopmentUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4B4A7F722C68BF640028FD9C /* newValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = newValue.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -74,6 +76,7 @@
 				4B2B61322C5401DD00A1EEE6 /* DevelopmentTests */,
 				4B2B613C2C5401DD00A1EEE6 /* DevelopmentUITests */,
 				4B2B61202C5401DB00A1EEE6 /* Products */,
+				4B4A7F722C68BF640028FD9C /* newValue.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -236,6 +239,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4B4A7F732C68BF640028FD9C /* newValue.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

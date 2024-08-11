@@ -34,6 +34,7 @@ let package = Package(
         .product(name: "RubberBanding", package: "swift-rubber-banding"),
         .product(name: "SwiftUISupportSizing", package: "swiftui-support"),
         .product(name: "SwiftUISupportDescribing", package: "swiftui-support"),
+        .product(name: "SwiftUISupportBackport", package: "swiftui-support"),
         .product(name: "SwiftUISupportGeometryEffect", package: "swiftui-support"),
         .product(name: "SwiftUIScrollViewInteroperableDragGesture", package: "swiftui-scrollview-interoperable-drag-gesture"),
       ]

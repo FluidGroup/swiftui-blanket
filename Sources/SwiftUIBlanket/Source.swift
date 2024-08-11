@@ -3,6 +3,7 @@ import SwiftUI
 import SwiftUIScrollViewInteroperableDragGesture
 import SwiftUISupportDescribing
 import SwiftUISupportSizing
+import SwiftUISupportBackport
 import os.log
 
 enum Log {
@@ -236,6 +237,10 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     
     ZStack {
       content
+        .readingGeometry(
+          transform: \.size,
+          target: $maximumSize
+        )     
       _display
     }
   }
@@ -259,14 +264,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
     }
 
-    .background(
-      Rectangle()
-        .hidden()
-        .readingGeometry(
-          transform: \.size,
-          target: $maximumSize
-        )
-    )
+  
     .map { view in
       switch configuration.mode {
       case .inline:
@@ -322,18 +320,25 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
           contentOffset.height = hidingOffset
         }
       }
-    }
-    .onChange(
-      of: contentDescriptor,
-      perform: { descriptor in      
-        
-        guard let contentSize = descriptor.contentSize,
-              let detents = descriptor.detents else { return }      
-        guard customHeight == nil else { return }
-        
-        resolve(contentSize: contentSize, detents: detents)
-        
-    })
+    }   
+    .onChangeWithPrevious(of: contentDescriptor, emitsInitial: true, perform: { newValue, oldValue in
+      
+      guard newValue.contentSize != oldValue?.contentSize else {
+        return
+      }
+      
+      guard newValue.detents != oldValue?.detents else {
+        return
+      }      
+      
+      guard let contentSize = newValue.contentSize,
+            let detents = newValue.detents else { return }      
+      
+      guard customHeight == nil else { return }
+      
+      resolve(contentSize: contentSize, detents: detents)
+      
+    })   
     .onChange(of: hidingOffset) { hidingOffset in
       if isPresented == false {
         // init
@@ -647,21 +652,21 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
     // managing scrollview
     
-    if let customHeight = self.customHeight {      
-      
-      let currentRange = resolved.range(for: customHeight)
-      
-      Log.debug(customHeight, resolved.maxDetent.offset)
-      
-      if customHeight >= resolved.maxDetent.offset {
-        isScrollLockEnabled = false
-      } else {
-        isScrollLockEnabled = true
-      }
-      
-    } else {
-      isScrollLockEnabled = true
-    }
+//    if let customHeight = self.customHeight {      
+//      
+//      let currentRange = resolved.range(for: customHeight)
+//      
+//      Log.debug(customHeight, resolved.maxDetent.offset)
+//      
+//      if customHeight >= resolved.maxDetent.offset {
+//        isScrollLockEnabled = false
+//      } else {
+//        isScrollLockEnabled = true
+//      }
+//      
+//    } else {
+//      isScrollLockEnabled = true
+//    }
   }
 
 }

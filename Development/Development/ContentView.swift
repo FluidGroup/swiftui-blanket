@@ -10,7 +10,15 @@ import SwiftUIBlanket
 
 struct ContentView: View {
   var body: some View {
-    InlinePreview(detents: [])
+    NavigationStack {
+      Form {
+        Section {
+          NavigationLink("[.content]", destination: InlinePreview(detents: [.content]))
+          NavigationLink("[.content, .fraction(1)]", destination: InlinePreview(detents: [.content, .fraction(1)]))
+        }
+      }
+    }
+    
   }
 }
 

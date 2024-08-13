@@ -31,6 +31,11 @@ private final class Proxy: ObservableObject {
   @Published var size: CGSize?
 }
 
+/**
+ This is a workaround to get the size of the view instead of using GeometryReader.
+ Using GeometryReader gets a wrong value in particular case like a shape expanding out of safe-area.
+ Given Layout protocol provides the constrained size for laying out its subviews, uses this value for measuring container size.
+ */
 private struct _Layout: Layout {
   
   private let proxy: Proxy

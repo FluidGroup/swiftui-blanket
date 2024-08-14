@@ -526,7 +526,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         height: baseOffset.height + translation.height - baseTranslation.height
       )
       
-      withAnimation(.interactiveSpring()) {
+//      withAnimation(.interactiveSpring()) {
 
         contentOffset.height = rubberBand(
           value: proposedOffset.height,
@@ -535,7 +535,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
           bandLength: 50
         )
 
-      }
+//      }
 
     } else if proposedHeight > highestDetent {
       
@@ -675,6 +675,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       }
 
     }
+    
+    isScrollLockEnabled = false
 
     // managing scrollview
     

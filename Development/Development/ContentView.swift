@@ -115,6 +115,7 @@ struct InlinePreview: View {
       Button("Show") {
         isPresented.toggle()
       }
+      Text("Showing : \(isPresented.description)")
       Rectangle()
         .fill(Color.purple)
         .ignoresSafeArea()

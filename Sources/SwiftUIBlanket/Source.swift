@@ -180,6 +180,13 @@ private final class Model: ObservableObject {
   var presentingContentOffset: CGSize
   var resolved: Resolved?
   
+  // Ephemeral state
+  var baseOffset: CGSize?
+  // Ephemeral state  
+  var baseTranslation: CGSize?
+  // Ephemeral state
+  var baseCustomHeight: CGFloat?
+  
   init(presentingContentOffset: CGSize) {
     self.presentingContentOffset = presentingContentOffset
   }
@@ -219,12 +226,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   @State private var safeAreaInsets: EdgeInsets = .init()
 
-  // Ephemeral state
-  @State private var baseOffset: CGSize?
-  @State private var baseTranslation: CGSize?
-  // Ephemeral state
-  @State private var baseCustomHeight: CGFloat?
-
   @State var customHeight: CGFloat?
 
   private let onDismiss: (() -> Void)?
@@ -252,7 +253,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         
         contentDescriptor.maximumSize = size
         
-        dipatchResolve(newValue: contentDescriptor, oldValue: nil)
+        dipatchResolve(newValue: contentDescriptor)
         
       }))
       .overlay(
@@ -332,15 +333,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       transform: \.safeAreaInsets,
       target: $safeAreaInsets
     )
-    .onChange(of: isPresented) { isPresented in
-      if isPresented {
-       
-      } else {
-//        withAnimation(.spring(response: 0.45)) {
-//          contentOffset.height = contentDescriptor.hidingOffset
-//        }
-      }
-    }   
     .onChangeWithPrevious(
       of: contentDescriptor,
       emitsInitial: true,
@@ -348,7 +340,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         newValue,
         oldValue in
         
-        dipatchResolve(newValue: newValue, oldValue: oldValue)
+        dipatchResolve(newValue: newValue)
       
     })   
     .onChange(of: phase) { phase in
@@ -357,6 +349,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       case .contentLoaded:
         self.contentOffset.height = contentDescriptor.hidingOffset
         
+        // to animate sliding in
         Task { @MainActor in
           self.phase = .displaying
         }
@@ -373,21 +366,8 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   }
   
   private func dipatchResolve(
-    newValue: ContentDescriptor,
-    oldValue: ContentDescriptor?
+    newValue: ContentDescriptor
   ) {
-//    guard newValue.contentSize != oldValue?.contentSize else {
-//      return
-//    }
-//    
-//    guard newValue.detents != oldValue?.detents else {
-//      return
-//    }    
-//    
-//    guard newValue.maximumSize != oldValue?.maximumSize else {
-//      return
-//    }  
-    
     guard 
       let contentSize = newValue.contentSize,
       let detents = newValue.detents,
@@ -534,11 +514,11 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       return
     }
             
-    if baseCustomHeight == nil {
-      self.baseCustomHeight = customHeight ?? contentDescriptor.contentSize?.height ?? 0
+    if model.baseCustomHeight == nil {
+      model.baseCustomHeight = customHeight ?? contentDescriptor.contentSize?.height ?? 0
     }
     
-    let baseCustomHeight = self.baseCustomHeight!
+    let baseCustomHeight = model.baseCustomHeight!
 
     let proposedHeight = baseCustomHeight - translation.height
 
@@ -549,16 +529,16 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       
       // moving view
       
-      if baseOffset == nil {
-        self.baseOffset = model.presentingContentOffset
+      if model.baseOffset == nil {
+        model.baseOffset = model.presentingContentOffset
       }
       
-      if baseTranslation == nil {
-        self.baseTranslation = translation
+      if model.baseTranslation == nil {
+        model.baseTranslation = translation
       }
       
-      let baseOffset = self.baseOffset!
-      let baseTranslation = self.baseTranslation!
+      let baseOffset = model.baseOffset!
+      let baseTranslation = model.baseTranslation!
 
       Log.debug("Use intrinsict height")
 
@@ -606,9 +586,9 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
   private func onEnd(velocity: CGVector) {
         
-    self.baseOffset = nil
-    self.baseTranslation = nil
-    self.baseCustomHeight = nil
+    model.baseOffset = nil
+    model.baseTranslation = nil
+    model.baseCustomHeight = nil
     
     guard let resolved = self.model.resolved else { return }    
     

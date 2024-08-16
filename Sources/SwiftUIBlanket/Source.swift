@@ -15,6 +15,13 @@ enum Log {
     #endif
   }
 
+  static func error(_ values: Any...) {
+#if DEBUG
+    let date = Date().formatted(.iso8601)
+    print("[\(date)] ❌ \(values.map { "\($0)" }.joined(separator: " "))")
+#endif
+  }
+  
 }
 
 public struct BlanketDetent: Hashable {
@@ -101,15 +108,8 @@ public struct BlanketConfiguration {
 
 }
 
-private struct Resolved {
+private struct Resolved: Equatable {
   
-  struct State {
-    
-    let lower: BlanketDetent.Resolved?
-    let higher: BlanketDetent.Resolved?
-    
-  }
-
   let detents: [BlanketDetent.Resolved]
 
   var maxDetent: BlanketDetent.Resolved {
@@ -178,6 +178,7 @@ private struct Resolved {
 private final class Model: ObservableObject {
   
   var presentingContentOffset: CGSize
+  var resolved: Resolved?
   
   init(presentingContentOffset: CGSize) {
     self.presentingContentOffset = presentingContentOffset
@@ -186,18 +187,33 @@ private final class Model: ObservableObject {
 }
 
 private struct ContentDescriptor: Hashable {
+  
+  var hidingOffset: CGFloat = 0
   var contentSize: CGSize?
   var maximumSize: CGSize?
   var detents: Set<BlanketDetent>?
 }
 
+private enum Phase {
+  case contentUnloaded
+  case contentLoaded
+  case displaying
+}
+
+private struct Pair<T1: Equatable, T2: Equatable>: Equatable {
+  let t1: T1
+  let t2: T2
+}
+
 public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   
   private let displayContent: () -> DisplayContent
+  
+  @State private var phase: Phase = .contentUnloaded
+  
   @Binding var isPresented: Bool
 
   @State private var contentOffset: CGSize = .zero
-  @State private var targetOffset: CGSize = .zero
 
   @State private var contentDescriptor: ContentDescriptor = .init()
 
@@ -212,10 +228,6 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
   @State var customHeight: CGFloat?
 
   private let onDismiss: (() -> Void)?
-
-  @State private var hidingOffset: CGFloat = 0
-
-  @State private var resolved: Resolved?
   
   @State private var isScrollLockEnabled: Bool = true
   
@@ -244,7 +256,14 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         
       }))
       .overlay(
-        _display,
+        Group {
+          if isPresented {
+            _display
+              .onDisappear {
+                phase = .contentUnloaded
+              }
+          }
+        },
         alignment: .bottom        
       )
 
@@ -256,7 +275,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
 
       Spacer()
         .layoutPriority(1)
-
+      
       displayContent()
         .onPreferenceChange(BlanketContentDetentsPreferenceKey.self, perform: { detents in
           self.contentDescriptor.detents = detents
@@ -315,13 +334,11 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     )
     .onChange(of: isPresented) { isPresented in
       if isPresented {
-        withAnimation(.spring(response: 0.45)) {
-          contentOffset.height = 0
-        }
+       
       } else {
-        withAnimation(.spring(response: 0.45)) {
-          contentOffset.height = hidingOffset
-        }
+//        withAnimation(.spring(response: 0.45)) {
+//          contentOffset.height = contentDescriptor.hidingOffset
+//        }
       }
     }   
     .onChangeWithPrevious(
@@ -334,11 +351,24 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         dipatchResolve(newValue: newValue, oldValue: oldValue)
       
     })   
-    .onChange(of: hidingOffset) { hidingOffset in
-      if isPresented == false {
-        // init
-        self.contentOffset.height = hidingOffset
+    .onChange(of: phase) { phase in
+            
+      switch phase {
+      case .contentLoaded:
+        self.contentOffset.height = contentDescriptor.hidingOffset
+        
+        Task { @MainActor in
+          self.phase = .displaying
+        }
+                
+      case .displaying:
+        withAnimation(.spring(response: 0.45)) {
+          contentOffset.height = 0
+        }
+      case .contentUnloaded:
+        break
       }
+      
     }
   }
   
@@ -346,25 +376,29 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     newValue: ContentDescriptor,
     oldValue: ContentDescriptor?
   ) {
-    guard newValue.contentSize != oldValue?.contentSize else {
-      return
-    }
-    
-    guard newValue.detents != oldValue?.detents else {
-      return
-    }    
-    
-    guard newValue.maximumSize != oldValue?.maximumSize else {
-      return
-    }  
+//    guard newValue.contentSize != oldValue?.contentSize else {
+//      return
+//    }
+//    
+//    guard newValue.detents != oldValue?.detents else {
+//      return
+//    }    
+//    
+//    guard newValue.maximumSize != oldValue?.maximumSize else {
+//      return
+//    }  
     
     guard 
       let contentSize = newValue.contentSize,
       let detents = newValue.detents,
       let maximumSize = newValue.maximumSize
-    else { return }      
+    else { 
+      return
+    }      
     
-    guard customHeight == nil else { return }
+    guard customHeight == nil else { 
+      return
+    }
     
     resolve(
       contentSize: contentSize,
@@ -394,7 +428,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       contentHeight: contentSize.height
     )
 
-    var resolved = usingDetents.map {
+    var resolvedDetents = usingDetents.map {
       return BlanketDetent.Resolved(
         source: $0,
         offset: $0.resolve(in: context)
@@ -403,15 +437,15 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     .sorted(by: { $0.offset < $1.offset })
 
     // remove duplicates
-    resolved = resolved.reduce(into: []) { result, next in
+    resolvedDetents = resolvedDetents.reduce(into: []) { result, next in
       if !result.contains(next) {
         result.append(next)
       }
     }
 
     // remove smaller than content
-    if let contentSizeDetent = resolved.first(where: { $0.source.node == .content }) {
-      resolved.removeAll {
+    if let contentSizeDetent = resolvedDetents.first(where: { $0.source.node == .content }) {
+      resolvedDetents.removeAll {
         $0.offset < contentSizeDetent.offset
       }
     }
@@ -421,9 +455,17 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       offset: (contentSize.height + safeAreaInsets.bottom)
     )
 
-    hidingOffset = hiddenDetent.offset
-
-    self.resolved = .init(detents: resolved)
+    if self.contentDescriptor.hidingOffset != hiddenDetent.offset {      
+      self.contentDescriptor.hidingOffset = hiddenDetent.offset
+    }
+    
+    let newResolved = Resolved(detents: resolvedDetents)
+        
+    if self.model.resolved != newResolved {
+      self.model.resolved = newResolved
+    }
+    
+    phase = .contentLoaded
 
   }
 
@@ -487,7 +529,10 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     translation: CGSize
   ) {
 
-    guard let resolved else { return }
+    guard let resolved = self.model.resolved else {
+      Log.error("resolved object is not created")
+      return
+    }
             
     if baseCustomHeight == nil {
       self.baseCustomHeight = customHeight ?? contentDescriptor.contentSize?.height ?? 0
@@ -565,7 +610,7 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     self.baseTranslation = nil
     self.baseCustomHeight = nil
     
-    guard let resolved else { return }    
+    guard let resolved = self.model.resolved else { return }    
     
     if let customHeight = self.customHeight {
       Log.debug("End - stretching")
@@ -624,14 +669,19 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
       Log.debug("End - moving", velocity.dy, contentOffset.height)
 
       let targetOffset: CGSize
+      let willHide: Bool
 
       if velocity.dy > 50 || contentOffset.height > 50 {
-        targetOffset = .init(width: 0, height: hidingOffset)
+        
+        // hides
+        targetOffset = .init(width: 0, height: contentDescriptor.hidingOffset)
+        willHide = true
+                
       } else {
+        
+        willHide = false
         targetOffset = .zero
       }
-
-      self.targetOffset = targetOffset
 
       let distance = CGSize(
         width: targetOffset.width - contentOffset.width,
@@ -662,10 +712,14 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
         withAnimation(animationY) {
           animation()
         } completion: {
-
+          if willHide {
+            isPresented = false
+          }
         }
 
       } else {
+        
+        // TODO: update isPresented
 
         withAnimation(
           animationY

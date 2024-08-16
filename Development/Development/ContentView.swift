@@ -174,23 +174,63 @@ struct InlinePreview: View {
   return Preview()
 }
 
-struct InlineView: View {
-  @State private var showSettings = false
-  
-  var body: some View {
-    Button("View Settings") {
-      showSettings = true
-    }
-    .sheet(isPresented: $showSettings) {
-      SheetContent(title: "Standard")
-        .presentationDetents([.medium, .fraction(0.2), .large])
-    }
-  }
-}
-
-
 @available(iOS 16.0, *)
 #Preview("Sheet"){
+  
+  struct Item: Identifiable {
+    let id = UUID()
+    let title: String
+  }
+    
+  struct InlineView: View {
+        
+    @State var item: Item?
+    
+    var body: some View {
+      VStack {
+        
+        Button("Auto") {
+          Task {
+            
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            
+            item = .init(title: "1")
+            
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            
+            item = .init(title: "2")
+            
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            
+            item = .init(title: "3")
+            
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            
+            item = nil
+            
+          }
+        }
+        
+        Button("Show A") {
+          item = .init(title: "This is a blanket A")
+        }
+        Button("Show B") {
+          item = .init(title: "This is a blanket B")
+        }
+        Button("Show C") {
+          item = .init(title: "This is a blanket C")
+        }
+        Rectangle()
+          .fill(Color.purple)
+          .ignoresSafeArea()
+      }
+      .sheet(item: $item) { item in 
+        SheetContent(
+          title: item.title
+        )
+      }
+    }
+  }
 
   return InlineView()
 }

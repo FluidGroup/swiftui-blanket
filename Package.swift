@@ -26,12 +26,14 @@ let package = Package(
       url: "https://github.com/FluidGroup/swiftui-scrollview-interoperable-drag-gesture",
       from: "0.2.0"
     ),
+    .package(url: "https://github.com/FluidGroup/swift-with-prerender", from: "1.0.0"),
   ],
   targets: [
     .target(
       name: "SwiftUIBlanket",
       dependencies: [
         .product(name: "RubberBanding", package: "swift-rubber-banding"),
+        .product(name: "WithPrerender", package: "swift-with-prerender"),
         .product(name: "SwiftUISupportSizing", package: "swiftui-support"),
         .product(name: "SwiftUISupportDescribing", package: "swiftui-support"),
         .product(name: "SwiftUISupportBackport", package: "swiftui-support"),

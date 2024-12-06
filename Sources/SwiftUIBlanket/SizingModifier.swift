@@ -1,4 +1,5 @@
 import SwiftUI
+import WithPrerender
 
 struct SizingModifier: ViewModifier {
   
@@ -64,8 +65,10 @@ private struct _Layout: Layout {
   
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     let size = CGSize.init(width: proposal.width ?? 0 , height: proposal.height ?? 0)
-    Task { @MainActor in
-      proxy.size = size
+    MainActor.assumeIsolated {
+      withPrerender {      
+        proxy.size = size
+      }
     }
     return size
   }

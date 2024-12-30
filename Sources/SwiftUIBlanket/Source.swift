@@ -6,8 +6,15 @@ import SwiftUISupportSizing
 import SwiftUISupportBackport
 import os.log
 
-enum Log {
+// MARK: - Log
 
+/// A utility enum for logging debug and error messages with timestamps.
+enum Log {
+  // MARK: - Debug Logging
+  
+  /// Logs debug messages, including a timestamp for the current time.
+  /// Only enabled in debug builds (`DEBUG` flag).
+  /// - Parameter values: The values to log, which will be converted to string and printed.
   static func debug(_ values: Any...) {
     #if DEBUG
     let date = Date().formatted(.iso8601)
@@ -15,50 +22,91 @@ enum Log {
     #endif
   }
 
+  // MARK: - Error Logging
+  
+  /// Logs error messages, including a timestamp and an error emoji.
+  /// Only enabled in debug builds (`DEBUG` flag).
+  /// - Parameter values: The error details to log, which will be converted to string and printed.
   static func error(_ values: Any...) {
-#if DEBUG
+    #if DEBUG
     let date = Date().formatted(.iso8601)
     print("[\(date)] ❌ \(values.map { "\($0)" }.joined(separator: " "))")
-#endif
+    #endif
   }
-  
 }
 
+/// A struct representing a detent in the Blanket view system, defining how the view behaves
+/// when it's presented at different heights or fractions of the screen.
 public struct BlanketDetent: Hashable {
 
+  // MARK: - Context
+
+  /// A context containing the necessary data to resolve the detent's value.
+  /// It includes the maximum allowed detent value and the content height.
   struct Context {
     let maxDetentValue: CGFloat
     let contentHeight: CGFloat
   }
 
-  enum Node: Hashable {
+  // MARK: - Node Definition
 
+  /// An enum representing different types of detents that can be used.
+  /// A detent can be defined as a fraction of the screen's maximum height,
+  /// a specific height value, or as the content's natural height.
+  enum Node: Hashable {
+    
+    /// A fraction of the maximum height of the detent (e.g., 0.5 for 50% height).
     case fraction(CGFloat)
+    
+    /// A fixed height for the detent.
     case height(CGFloat)
+    
+    /// A special case for the content's natural height.
     case content
   }
 
+  // MARK: - Resolved Detent
+
+  /// A resolved detent, which is the result of evaluating a `BlanketDetent` in a given context.
+  /// It includes the detent source and its resolved offset (height) in the layout.
   struct Resolved: Hashable {
-
+    /// The original detent source.
     let source: BlanketDetent
+    
+    /// The resolved offset (height) for this detent.
     let offset: CGFloat
-
   }
 
+  // MARK: - Properties
+
+  /// The detent's node, which can be a fraction, a height, or content.
   let node: Node
 
+  // MARK: - Initializers
+
+  /// Creates a detent with a fixed height.
+  /// - Parameter height: The height value for the detent.
   public static func height(_ height: CGFloat) -> Self {
     .init(node: .height(height))
   }
 
+  /// Creates a detent with a fraction of the maximum height.
+  /// - Parameter fraction: The fraction of the maximum height (e.g., 0.5 for 50%).
   public static func fraction(_ fraction: CGFloat) -> Self {
     .init(node: .fraction(fraction))
   }
 
+  /// A special case for the content's natural height as a detent.
   public static var content: Self {
     .init(node: .content)
   }
 
+  // MARK: - Methods
+
+  /// Resolves the detent's offset in the given context.
+  /// This will calculate the detent's value based on the `maxDetentValue` and `contentHeight` from the context.
+  /// - Parameter context: The context containing the max height and content height.
+  /// - Returns: The resolved offset (height) for this detent.
   func resolve(in context: Context) -> CGFloat {
     switch node {
     case .content:
@@ -69,23 +117,46 @@ public struct BlanketDetent: Hashable {
       return min(height, context.maxDetentValue)
     }
   }
-
 }
 
+// MARK: - BlanketConfiguration
+
+/// A configuration struct that defines how a `Blanket` view behaves, including its appearance
+/// and interaction mode. It supports two modes: inline and presentation.
 public struct BlanketConfiguration {
 
+  // MARK: - Inline Configuration
+
+  /// A struct representing the configuration for the inline mode of the Blanket view.
+  /// The inline mode typically involves simpler configurations, possibly without animations or 
+  /// full-screen presentation behavior.
   public struct Inline {
 
+    /// Initializes the `Inline` configuration. 
+    /// This struct does not have any properties but may be expanded in the future.
     public init() {
 
     }
   }
 
-  public struct Presentation {
+  // MARK: - Presentation Configuration
 
+  /// A struct representing the configuration for the presentation mode of the Blanket view.
+  /// The presentation mode typically involves a more complex configuration, such as setting 
+  /// background color and deciding whether to allow interaction with content outside the blanket.
+  public struct Presentation {
+    /// The background color of the presentation. This can be used to set a dimming effect
+    /// or background for the blanket view.
     public let backgroundColor: Color
+
+    /// A boolean flag that determines whether the blanket should handle interactions with content
+    /// outside of its bounds (e.g., allowing taps or gestures outside the blanket).
     public let handlesOutOfContent: Bool
 
+    /// Initializes the `Presentation` configuration.
+    /// - Parameters:
+    ///   - backgroundColor: The background color of the blanket when in presentation mode.
+    ///   - handlesOutOfContent: A flag that controls whether the blanket can handle interactions outside its bounds.
     public init(
       backgroundColor: Color,
       handlesOutOfContent: Bool
@@ -95,33 +166,60 @@ public struct BlanketConfiguration {
     }
   }
 
+  // MARK: - Mode Enum
+
+  /// An enum that defines the two available modes for the `Blanket` view.
+  /// - `.inline`: Uses the `Inline` configuration for simpler behavior.
+  /// - `.presentation`: Uses the `Presentation` configuration for more complex behavior.
   public enum Mode {
     case inline(Inline)
     case presentation(Presentation)
   }
 
+  // MARK: - Properties
+
+  /// The mode in which the `Blanket` view operates. This determines the configuration to be used.
   public let mode: Mode
 
+  // MARK: - Initializer
+
+  /// Initializes the `BlanketConfiguration` with a specified mode.
+  /// - Parameter mode: The mode that defines the configuration (`inline` or `presentation`).
   public init(mode: Mode) {
     self.mode = mode
   }
-
 }
 
+// MARK: - Resolved
+
+/// A private struct used to represent the resolved detents for a `Blanket` view, 
+/// containing information about the detents and providing methods to resolve detent positions
+/// based on offset and velocity.
 private struct Resolved: Equatable {
-  
+  // MARK: - Properties
+
+  /// An array of resolved detents that describe the positions of the blanket's detents.
   let detents: [BlanketDetent.Resolved]
 
+  /// The maximum detent in the array, i.e., the last detent.
   var maxDetent: BlanketDetent.Resolved {
     detents.last!
   }
 
+  /// The minimum detent in the array, i.e., the first detent.
   var minDetent: BlanketDetent.Resolved! {
     detents.first
   }
   
+  // MARK: - Methods
+
+  /// Returns the lower and higher detents relative to the given offset.
+  /// 
+  /// - Parameter offset: The current offset to compare against.
+  /// - Returns: A tuple of optional `BlanketDetent.Resolved` values: 
+  ///   - `lower`: The detent that is less than or equal to the offset.
+  ///   - `higher`: The detent that is greater than the offset.
   func range(for offset: CGFloat) -> (lower: BlanketDetent.Resolved?, higher: BlanketDetent.Resolved?) {
-    
     var lower: BlanketDetent.Resolved?
     var higher: BlanketDetent.Resolved?
     
@@ -131,6 +229,7 @@ private struct Resolved: Equatable {
         continue
       }
       
+      // Assign higher when the lower is already found and we're past the offset
       if higher == nil, lower != nil {
         higher = e
         break
@@ -140,26 +239,34 @@ private struct Resolved: Equatable {
     return (lower, higher)
   }
 
-
+  /// Returns the nearest detent to the given offset, considering the offset and velocity.
+  /// 
+  /// - Parameters:
+  ///   - offset: The current offset position to calculate the nearest detent.
+  ///   - velocity: The velocity of the movement. This affects whether we choose the lower or higher detent.
+  /// - Returns: The `BlanketDetent.Resolved` that is nearest to the offset, adjusted for velocity.
   func nearestDetent(to offset: CGFloat, velocity: CGFloat) -> BlanketDetent.Resolved {
-    
     let (lower, higher) = range(for: offset)
     
+    // If there's no higher detent, return the last detent (maxDetent)
     guard higher != nil else {
       return detents.last!
     }
-            
+    
+    // Calculate the distances to the lower and higher detents
     let lowerDistance = abs(lower!.offset - offset)
     let higherDistance = abs(higher!.offset - offset)        
     
     var proposed: BlanketDetent.Resolved
     
+    // Determine which detent is closer based on distance
     if lowerDistance < higherDistance {
       proposed = lower!
     } else {
       proposed = higher!
     }
     
+    // Adjust detent based on velocity (thresholds for fast movements)
     if velocity < -50 {
       proposed = higher!
     }
@@ -169,47 +276,84 @@ private struct Resolved: Equatable {
     }
     
     return proposed
-    
   }
-
 }
 
+/// A private class that models the state and behavior of a presenting view, 
+/// including its offset and other ephemeral states related to the interaction.
 @MainActor
 private final class Model: ObservableObject {
-  
+  // MARK: - Properties
+
+  /// The current offset of the presenting content.
   var presentingContentOffset: CGSize
+
+  /// The resolved detent positions for the blanket view.
   var resolved: Resolved?
-  
-  // Ephemeral state
+
+  // MARK: - Ephemeral State
+
+  /// A temporary offset used for calculating translations or adjustments.
   var baseOffset: CGSize?
-  // Ephemeral state  
+
+  /// A temporary translation value used for calculating view movement.
   var baseTranslation: CGSize?
-  // Ephemeral state
+
+  /// A temporary custom height used in calculating the height adjustments of the view.
   var baseCustomHeight: CGFloat?
-  
+
+  // MARK: - Initializer
+
+  /// Initializes the `Model` with a given presenting content offset.
+  ///
+  /// - Parameter presentingContentOffset: The initial offset of the content that is being presented.
   init(presentingContentOffset: CGSize) {
     self.presentingContentOffset = presentingContentOffset
   }
-  
 }
 
+// MARK: - ContentDescriptor
+
+/// A descriptor that holds information about the content's state and layout configuration.
 private struct ContentDescriptor: Hashable {
-  
+  /// The offset at which the content is hidden, typically used for sliding or animated transitions.
   var hidingOffset: CGFloat = 0
+
+  /// The size of the content. It may be `nil` if the content size is unknown or not set.
   var contentSize: CGSize?
+
+  /// The maximum allowable size for the content, providing a constraint on how large it can become.
   var maximumSize: CGSize?
+
+  /// The set of possible detents (positions or sizes) for the blanket, if applicable.
   var detents: Set<BlanketDetent>?
 }
 
+// MARK: - Phase
+
+/// An enum representing different phases in the lifecycle of the content.
 private enum Phase {
+  /// The content has been added to the view hierarchy but is not yet visible or loaded.
   case contentMounted
+  
+  /// The content has been removed or is no longer visible.
   case contentUnloaded
+  
+  /// The content has been fully loaded and is ready for display.
   case contentLoaded
+  
+  /// The content is currently being displayed or presented on the screen.
   case displaying
 }
 
+// MARK: - Pair
+
+/// A generic pair struct that holds two equatable values of types `T1` and `T2`.
 private struct Pair<T1: Equatable, T2: Equatable>: Equatable {
+  /// The first value of the pair.
   let t1: T1
+
+  /// The second value of the pair.
   let t2: T2
 }
 

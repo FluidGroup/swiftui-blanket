@@ -2,6 +2,7 @@ import Observation
 import SwiftUI
 import Testing
 import UIKit
+
 @testable import SwiftUIBlanket
 
 @Suite(.serialized)
@@ -27,6 +28,24 @@ struct BlanketHostingTests {
       try await Task.sleep(for: .milliseconds(100))
       #expect(state.appearances == 0)
       #expect(state.dismissals == 0)
+    }
+  }
+
+  @Test func rePresentationCancelsDismissalWithoutUnmounting() async throws {
+    let state = HostState()
+    state.isPresented = true
+    try await withHost(BooleanHost(state: state)) {
+      #expect(await eventually { state.measuredHeight == 120 })
+      try await Task.sleep(for: .milliseconds(600))
+      state.isPresented = false
+      try await Task.sleep(for: .milliseconds(30))
+      state.isPresented = true
+      try await Task.sleep(for: .milliseconds(600))
+      #expect(state.dismissals == 0)
+      #expect(state.disappearances == 0)
+      #expect(state.appearances == 1)
+      state.isPresented = false
+      #expect(await eventually { state.dismissals == 1 && state.disappearances == 1 })
     }
   }
 
@@ -62,7 +81,8 @@ struct BlanketHostingTests {
     state.isPresented = true
     state.detents = [.height(80), .fraction(1)]
     try await withHost(BooleanHost(state: state)) {
-      #expect(await eventually { state.measuredHeight == 80 })
+      _ = await eventually { state.measuredHeight == 80 }
+      #expect(state.measuredHeight == 80)
     }
   }
 
@@ -87,7 +107,7 @@ struct BlanketHostingTests {
     _ content: Content,
     perform: () async throws -> Void
   ) async throws {
-    let controller = UIHostingController(rootView: content.environment(\.accessibilityReduceMotion, true))
+    let controller = UIHostingController(rootView: content)
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
     window.rootViewController = controller
     window.makeKeyAndVisible()
@@ -119,6 +139,8 @@ private final class HostState {
   var item: HostItem?
   var displayedTitle: String?
   var lastRemovedTitle: String?
+
+  func didDismiss() { dismissals += 1 }
 }
 
 private struct HostItem: Identifiable {
@@ -132,10 +154,10 @@ private struct BooleanHost: View {
   var body: some View {
     Color.clear
       .frame(width: 320, height: state.containerHeight)
-      .blanket(isPresented: $state.isPresented, onDismiss: { state.dismissals += 1 }) {
+      .blanket(isPresented: $state.isPresented, onDismiss: state.didDismiss) {
         Text("Content")
           .frame(height: state.contentHeight)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
           .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { state.measuredHeight = $0 }
           .blanketContentDetents(state.detents)
           .onAppear { state.appearances += 1 }
@@ -150,7 +172,7 @@ private struct ItemHost: View {
   var body: some View {
     Color.clear
       .frame(width: 320, height: 600)
-      .blanket(item: $state.item, onDismiss: { state.dismissals += 1 }) { item in
+      .blanket(item: $state.item, onDismiss: state.didDismiss) { item in
         Text(item.title)
           .frame(height: 120)
           .onChange(of: item.title, initial: true) { _, title in state.displayedTitle = title }

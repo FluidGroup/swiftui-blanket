@@ -67,6 +67,7 @@ Presentation mode adds a backdrop within the same container. By default, tapping
 - `.height(240)` specifies a height in points.
 - `.fraction(0.5)` uses half the container's available height.
 - Heights are clamped to the container, negative values to zero, and NaN to zero. Equal resolved heights are treated as one stop. The smallest detent is selected initially; omitting detents or passing an empty collection uses `.content`.
+- Make content flexible if it should resize between detents. Content that insists on a larger fixed size is clipped to the blanket's bounds rather than scaled.
 - Drag upward to expand. Below the largest detent, vertical scrolling is locked so the gesture resizes the blanket first. At the largest detent, the `ScrollView` can scroll; dragging downward from its top edge moves the blanket again. Horizontal scroll views remain independent.
 - Dragging sufficiently far or quickly below the smallest detent dismisses the blanket. Setting the binding to `false` also animates dismissal. `onDismiss` runs once when a dismissal finishes, not when it is cancelled by re-presentation.
 - The blanket supports the accessibility escape action and uses a shorter, non-spring animation when Reduce Motion is enabled.

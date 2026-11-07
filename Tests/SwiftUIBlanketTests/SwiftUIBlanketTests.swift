@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import SwiftUIBlanket
 
 struct DetentTests {
@@ -12,7 +13,8 @@ struct DetentTests {
   }
 
   @Test func clampsEveryDetentToContainer() {
-    #expect(BlanketDetent.content.resolve(in: .init(maxDetentValue: 100, contentHeight: 200)) == 100)
+    #expect(
+      BlanketDetent.content.resolve(in: .init(maxDetentValue: 100, contentHeight: 200)) == 100)
     #expect(BlanketDetent.height(900).resolve(in: context) == 600)
     #expect(BlanketDetent.fraction(2).resolve(in: context) == 600)
     #expect(BlanketDetent.height(-100).resolve(in: context) == 0)
@@ -34,7 +36,8 @@ struct DetentTests {
   }
 
   @Test func sortsAndDeduplicatesResolvedHeights() {
-    let resolved = ResolvedDetents([.fraction(1), .content, .height(100), .height(600)], context: context)
+    let resolved = ResolvedDetents(
+      [.fraction(1), .content, .height(100), .height(600)], context: context)
     #expect(resolved.detents.map(\.height) == [100, 200, 600])
     #expect(resolved.minimum.source == .height(100))
   }
@@ -57,8 +60,9 @@ struct DetentTests {
   @Test func adaptsToContentAndContainerChanges() {
     let sources: Set<BlanketDetent> = [.content, .fraction(1)]
     #expect(ResolvedDetents(sources, context: context).detents.map(\.height) == [200, 600])
-    #expect(ResolvedDetents(sources, context: .init(maxDetentValue: 400, contentHeight: 250))
-      .detents.map(\.height) == [250, 400])
+    #expect(
+      ResolvedDetents(sources, context: .init(maxDetentValue: 400, contentHeight: 250))
+        .detents.map(\.height) == [250, 400])
   }
 
   @Test func springVelocityStaysFinite() {
@@ -78,39 +82,54 @@ struct PresentationStateTests {
     #expect(state.phase == .hidden)
     state.present()
     #expect(state.phase == .measuring)
-    let generation = try #require(state.prepareToEnter())
-    #expect(state.finishEntering(generation: generation))
+    let pending = state.prepareToEnter()
+    let generation = try #require(pending)
+    let didEnter = state.finishEntering(generation: generation)
+    #expect(didEnter)
     #expect(state.phase == .presented)
   }
 
   @Test func dismissalCompletesOnlyOnce() throws {
     var state = BlanketPresentationState()
-    #expect(state.dismiss() == nil)
+    let initialDismissal = state.dismiss()
+    #expect(initialDismissal == nil)
     state.present()
-    let generation = try #require(state.dismiss())
-    #expect(state.dismiss() == nil)
-    #expect(state.finishDismissal(generation: generation))
-    #expect(!state.finishDismissal(generation: generation))
+    let pending = state.dismiss()
+    let generation = try #require(pending)
+    let repeatedDismissal = state.dismiss()
+    #expect(repeatedDismissal == nil)
+    let didDismiss = state.finishDismissal(generation: generation)
+    let repeatedCompletion = state.finishDismissal(generation: generation)
+    #expect(didDismiss)
+    #expect(!repeatedCompletion)
     #expect(state.phase == .hidden)
   }
 
   @Test func dismissalCancelsPendingEntrance() throws {
     var state = BlanketPresentationState()
     state.present()
-    let entrance = try #require(state.prepareToEnter())
-    let dismissal = try #require(state.dismiss())
-    #expect(!state.finishEntering(generation: entrance))
-    #expect(state.finishDismissal(generation: dismissal))
+    let pendingEntrance = state.prepareToEnter()
+    let entrance = try #require(pendingEntrance)
+    let pendingDismissal = state.dismiss()
+    let dismissal = try #require(pendingDismissal)
+    let didEnter = state.finishEntering(generation: entrance)
+    let didDismiss = state.finishDismissal(generation: dismissal)
+    #expect(!didEnter)
+    #expect(didDismiss)
   }
 
   @Test func rePresentationIgnoresStaleDismissal() throws {
     var state = BlanketPresentationState()
     state.present()
-    let dismissal = try #require(state.dismiss())
+    let pendingDismissal = state.dismiss()
+    let dismissal = try #require(pendingDismissal)
     state.present()
-    #expect(!state.finishDismissal(generation: dismissal))
-    let entrance = try #require(state.prepareToEnter())
-    #expect(state.finishEntering(generation: entrance))
+    let didDismiss = state.finishDismissal(generation: dismissal)
+    #expect(!didDismiss)
+    let pendingEntrance = state.prepareToEnter()
+    let entrance = try #require(pendingEntrance)
+    let didEnter = state.finishEntering(generation: entrance)
+    #expect(didEnter)
     #expect(state.phase == .presented)
   }
 }

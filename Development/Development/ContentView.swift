@@ -68,15 +68,15 @@ private struct BlanketPreview: View {
     .padding()
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.purple.opacity(0.15))
-    .blanket(isPresented: $isPresented, configuration: configuration, onDismiss: {
-      dismissalCount += 1
-    }) {
+    .blanket(isPresented: $isPresented, configuration: configuration, onDismiss: didDismiss) {
       SheetContent(title: "This is a blanket", onClose: { isPresented = false })
         .blanketContentDetents(detents)
     }
     .navigationTitle("Blanket")
     .navigationBarTitleDisplayMode(.inline)
   }
+
+  private func didDismiss() { dismissalCount += 1 }
 }
 
 private struct SheetContent: View {
@@ -154,13 +154,15 @@ private struct ItemPreview: View {
     .padding()
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.orange.opacity(0.1))
-    .blanket(item: $item, onDismiss: { dismissalCount += 1 }) { item in
+    .blanket(item: $item, onDismiss: didDismiss) { item in
       SheetContent(title: item.title, onClose: { self.item = nil })
         .blanketContentDetents(.content, .fraction(1))
     }
     .navigationTitle("Item replacement")
     .navigationBarTitleDisplayMode(.inline)
   }
+
+  private func didDismiss() { dismissalCount += 1 }
 }
 
 #Preview { ContentView() }

@@ -210,10 +210,12 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     guard let contentHeight = descriptor.contentHeight, descriptor.maximumSize.height > 0 else {
       return nil
     }
-    return .init(descriptor.detents, context: .init(
-      maxDetentValue: descriptor.maximumSize.height,
-      contentHeight: contentHeight
-    ))
+    return .init(
+      descriptor.detents,
+      context: .init(
+        maxDetentValue: descriptor.maximumSize.height,
+        contentHeight: contentHeight
+      ))
   }
 
   private var restingHeight: CGFloat? {
@@ -271,14 +273,17 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
           }
       }
       .frame(height: dragHeight ?? restingHeight)
+      .clipped()
       .frame(maxWidth: .infinity)
-      .gesture(ScrollViewInteroperableDragGesture(
-        configuration: .init(ignoresScrollView: false, targetEdges: .top, sticksToEdges: false),
-        isScrollLockEnabled: $isScrollLockEnabled,
-        coordinateSpaceInDragging: .named(CoordinateSpaceTag.transition),
-        onChange: { onChange(translation: $0.translation) },
-        onEnd: { onEnd(velocity: $0.velocity.height) }
-      ))
+      .gesture(
+        ScrollViewInteroperableDragGesture(
+          configuration: .init(ignoresScrollView: false, targetEdges: .top, sticksToEdges: false),
+          isScrollLockEnabled: $isScrollLockEnabled,
+          coordinateSpaceInDragging: .named(CoordinateSpaceTag.transition),
+          onChange: { onChange(translation: $0.translation) },
+          onEnd: { onEnd(velocity: $0.velocity.height) }
+        )
+      )
       ._animatableOffset(y: contentOffset) { model.presentingOffset = $0 }
       .opacity(presentation.phase == .measuring ? 0 : 1)
       .accessibilityAction(.escape) { isPresented = false }
@@ -305,11 +310,16 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     guard let resolved else { return }
     if presentation.phase == .measuring || presentation.phase == .entering {
       selectedDetent = resolved.minimum.source
-    } else if let selectedDetent, !resolved.detents.contains(where: { $0.source == selectedDetent }) {
-      self.selectedDetent = resolved.nearest(to: selectedDetent.resolve(in: .init(
-        maxDetentValue: descriptor.maximumSize.height,
-        contentHeight: descriptor.contentHeight ?? 0
-      ))).source
+    } else if let selectedDetent, !resolved.detents.contains(where: { $0.source == selectedDetent })
+    {
+      self.selectedDetent =
+        resolved.nearest(
+          to: selectedDetent.resolve(
+            in: .init(
+              maxDetentValue: descriptor.maximumSize.height,
+              contentHeight: descriptor.contentHeight ?? 0
+            ))
+        ).source
     } else if selectedDetent == nil {
       selectedDetent = resolved.minimum.source
     }
@@ -376,9 +386,12 @@ public struct BlanketModifier<DisplayContent: View>: ViewModifier {
     let height = dragHeight ?? restingHeight ?? resolved.minimum.height
     let nearest = resolved.nearest(to: height, velocity: velocity)
     let springVelocity = blanketSpringVelocity(-velocity, distance: nearest.height - height)
-    let snap: Animation = reduceMotion ? animation : .interpolatingSpring(
-      mass: 1, stiffness: 200, damping: 25, initialVelocity: springVelocity
-    )
+    let snap: Animation =
+      reduceMotion
+      ? animation
+      : .interpolatingSpring(
+        mass: 1, stiffness: 200, damping: 25, initialVelocity: springVelocity
+      )
     withAnimation(snap) {
       selectedDetent = nearest.source
       dragHeight = nil
@@ -401,12 +414,13 @@ extension View {
     onDismiss: (() -> Void)? = nil,
     @ViewBuilder content: @escaping () -> Content
   ) -> some View {
-    modifier(BlanketModifier(
-      isPresented: isPresented,
-      configuration: configuration,
-      onDismiss: onDismiss,
-      displayContent: content
-    ))
+    modifier(
+      BlanketModifier(
+        isPresented: isPresented,
+        configuration: configuration,
+        onDismiss: onDismiss,
+        displayContent: content
+      ))
   }
 
   /// Replacing an item's identity replaces the blanket's content without dismissing it.
@@ -416,9 +430,10 @@ extension View {
     onDismiss: (() -> Void)? = nil,
     @ViewBuilder content: @escaping (Item) -> Content
   ) -> some View {
-    modifier(ItemBlanketModifier(
-      item: item, configuration: configuration, onDismiss: onDismiss, displayContent: content
-    ))
+    modifier(
+      ItemBlanketModifier(
+        item: item, configuration: configuration, onDismiss: onDismiss, displayContent: content
+      ))
   }
 }
 
@@ -445,13 +460,12 @@ private struct ItemBlanketModifier<Item: Identifiable, DisplayContent: View>: Vi
   func body(content: Content) -> some View {
     let displayedItem = item ?? retainedItem.value
     content
-      .blanket(isPresented: .init(
-        get: { item != nil },
-        set: { if !$0 { item = nil } }
-      ), configuration: configuration, onDismiss: {
-        retainedItem.value = nil
-        onDismiss?()
-      }) {
+      .blanket(
+        isPresented: .init(
+          get: { item != nil },
+          set: { if !$0 { item = nil } }
+        ), configuration: configuration, onDismiss: didDismiss
+      ) {
         if let displayedItem {
           displayContent(displayedItem)
             .id(displayedItem.id)
@@ -460,6 +474,11 @@ private struct ItemBlanketModifier<Item: Identifiable, DisplayContent: View>: Vi
       .onReceive(Just(item)) { item in
         if let item { retainedItem.value = item }
       }
+  }
+
+  private func didDismiss() {
+    retainedItem.value = nil
+    onDismiss?()
   }
 }
 

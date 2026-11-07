@@ -29,7 +29,9 @@ let package = Package(
       dependencies: [
         .product(name: "RubberBanding", package: "swift-rubber-banding"),
         .product(name: "WithPrerender", package: "swift-with-prerender"),
-        .product(name: "SwiftUIScrollViewInteroperableDragGesture", package: "swiftui-scrollview-interoperable-drag-gesture"),
+        .product(
+          name: "SwiftUIScrollViewInteroperableDragGesture",
+          package: "swiftui-scrollview-interoperable-drag-gesture"),
       ]
     ),
     .testTarget(

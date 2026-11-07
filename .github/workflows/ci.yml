@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Select an iPhone simulator
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          print(next(device["udid"] for runtime, items in devices.items()
+                     if "iOS" in runtime for device in items if "iPhone" in device["name"]))
+          ')
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+      - name: Test package
+        run: |
+          xcodebuild -scheme swiftui-blanket \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$RUNNER_TEMP/BlanketTests" \
+            -parallel-testing-enabled NO \
+            test CODE_SIGNING_ALLOWED=NO
+      - name: Build sample
+        run: |
+          xcodebuild -project Development/Development.xcodeproj -scheme Development \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/BlanketSample" \
+            build CODE_SIGNING_ALLOWED=NO

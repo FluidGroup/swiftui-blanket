@@ -1,48 +1,25 @@
+import Combine
 import RubberBanding
 import SwiftUI
 import SwiftUIScrollViewInteroperableDragGesture
-import SwiftUISupportDescribing
-import SwiftUISupportSizing
-import SwiftUISupportBackport
-import os.log
 
-enum Log {
-
-  static func debug(_ values: Any...) {
-    #if DEBUG
-    let date = Date().formatted(.iso8601)
-    print("[\(date)] \(values.map { "\($0)" }.joined(separator: " "))")
-    #endif
-  }
-
-  static func error(_ values: Any...) {
-#if DEBUG
-    let date = Date().formatted(.iso8601)
-    print("[\(date)] ❌ \(values.map { "\($0)" }.joined(separator: " "))")
-#endif
-  }
-  
-}
-
-public struct BlanketDetent: Hashable {
+/// A resting height for a blanket, measured within its container's safe area.
+public struct BlanketDetent: Hashable, Sendable {
 
   struct Context {
     let maxDetentValue: CGFloat
     let contentHeight: CGFloat
   }
 
-  enum Node: Hashable {
-
+  enum Node: Hashable, Sendable {
     case fraction(CGFloat)
     case height(CGFloat)
     case content
   }
 
-  struct Resolved: Hashable {
-
+  struct Resolved: Equatable {
     let source: BlanketDetent
-    let offset: CGFloat
-
+    let height: CGFloat
   }
 
   let node: Node
@@ -60,35 +37,34 @@ public struct BlanketDetent: Hashable {
   }
 
   func resolve(in context: Context) -> CGFloat {
+    let maximum = context.maxDetentValue.isFinite ? max(0, context.maxDetentValue) : 0
+    let proposed: CGFloat
     switch node {
     case .content:
-      return context.contentHeight
+      proposed = context.contentHeight
     case .fraction(let fraction):
-      return context.maxDetentValue * fraction
+      proposed = maximum * fraction
     case .height(let height):
-      return min(height, context.maxDetentValue)
+      proposed = height
     }
+    return proposed.isNaN ? 0 : min(maximum, max(0, proposed))
   }
-
 }
 
 public struct BlanketConfiguration {
 
   public struct Inline {
-
-    public init() {
-
-    }
+    public init() {}
   }
 
   public struct Presentation {
-
     public let backgroundColor: Color
+    /// Whether the backdrop intercepts taps and dismisses the blanket.
     public let handlesOutOfContent: Bool
 
     public init(
-      backgroundColor: Color,
-      handlesOutOfContent: Bool
+      backgroundColor: Color = .black.opacity(0.2),
+      handlesOutOfContent: Bool = true
     ) {
       self.backgroundColor = backgroundColor
       self.handlesOutOfContent = handlesOutOfContent
@@ -102,747 +78,421 @@ public struct BlanketConfiguration {
 
   public let mode: Mode
 
-  public init(mode: Mode) {
+  public init(mode: Mode = .inline(.init())) {
     self.mode = mode
   }
-
 }
 
-private struct Resolved: Equatable {
-  
+struct ResolvedDetents: Equatable {
   let detents: [BlanketDetent.Resolved]
 
-  var maxDetent: BlanketDetent.Resolved {
-    detents.last!
+  init(_ detents: Set<BlanketDetent>, context: BlanketDetent.Context) {
+    let sources: Set<BlanketDetent> = detents.isEmpty ? [.content] : detents
+    let ordered = sources.map {
+      BlanketDetent.Resolved(source: $0, height: $0.resolve(in: context))
+    }.sorted { lhs, rhs in
+      if lhs.height != rhs.height { return lhs.height < rhs.height }
+      return Self.priority(lhs.source) < Self.priority(rhs.source)
+    }
+    self.detents = ordered.reduce(into: []) { result, next in
+      if result.last?.height != next.height { result.append(next) }
+    }
   }
 
-  var minDetent: BlanketDetent.Resolved! {
-    detents.first
-  }
-  
-  func range(for offset: CGFloat) -> (lower: BlanketDetent.Resolved?, higher: BlanketDetent.Resolved?) {
-    
-    var lower: BlanketDetent.Resolved?
-    var higher: BlanketDetent.Resolved?
-    
-    for e in detents {
-      if e.offset <= offset {
-        lower = e
-        continue
-      }
-      
-      if higher == nil, lower != nil {
-        higher = e
-        break
-      }
-    }
-    
-    return (lower, higher)
+  var minimum: BlanketDetent.Resolved { detents[0] }
+  var maximum: BlanketDetent.Resolved { detents[detents.count - 1] }
+
+  func nearest(to height: CGFloat, velocity: CGFloat = 0) -> BlanketDetent.Resolved {
+    guard height > minimum.height else { return minimum }
+    guard height < maximum.height else { return maximum }
+    let lower = detents.last(where: { $0.height <= height }) ?? minimum
+    let higher = detents.first(where: { $0.height >= height }) ?? maximum
+    if velocity < -300 { return higher }
+    if velocity > 300 { return lower }
+    return height - lower.height < higher.height - height ? lower : higher
   }
 
+  private static func priority(_ detent: BlanketDetent) -> Int {
+    switch detent.node {
+    case .content: return 0
+    case .height: return 1
+    case .fraction: return 2
+    }
+  }
+}
 
-  func nearestDetent(to offset: CGFloat, velocity: CGFloat) -> BlanketDetent.Resolved {
-    
-    let (lower, higher) = range(for: offset)
-    
-    guard higher != nil else {
-      return detents.last!
-    }
-            
-    let lowerDistance = abs(lower!.offset - offset)
-    let higherDistance = abs(higher!.offset - offset)        
-    
-    var proposed: BlanketDetent.Resolved
-    
-    if lowerDistance < higherDistance {
-      proposed = lower!
-    } else {
-      proposed = higher!
-    }
-    
-    if velocity < -50 {
-      proposed = higher!
-    }
-    
-    if velocity > 50 {
-      proposed = lower!
-    }
-    
-    return proposed
-    
+struct BlanketPresentationState: Equatable {
+  enum Phase: Equatable {
+    case hidden, measuring, entering, presented, dismissing
   }
 
+  private(set) var phase: Phase = .hidden
+  private(set) var generation = 0
+
+  mutating func present() {
+    generation += 1
+    phase = .measuring
+  }
+
+  mutating func prepareToEnter() -> Int? {
+    guard phase == .measuring else { return nil }
+    phase = .entering
+    return generation
+  }
+
+  mutating func finishEntering(generation: Int) -> Bool {
+    guard self.generation == generation, phase == .entering else { return false }
+    phase = .presented
+    return true
+  }
+
+  mutating func dismiss() -> Int? {
+    guard phase != .hidden, phase != .dismissing else { return nil }
+    generation += 1
+    phase = .dismissing
+    return generation
+  }
+
+  mutating func finishDismissal(generation: Int) -> Bool {
+    guard self.generation == generation, phase == .dismissing else { return false }
+    phase = .hidden
+    return true
+  }
+}
+
+func blanketSpringVelocity(_ velocity: CGFloat, distance: CGFloat) -> CGFloat {
+  guard velocity.isFinite, distance.isFinite, abs(distance) > 0.5 else { return 0 }
+  return min(20, max(-20, velocity / distance))
+}
+
+private struct ContentDescriptor: Equatable {
+  var maximumSize: CGSize = .zero
+  var contentHeight: CGFloat?
+  var detents: Set<BlanketDetent> = []
+  var safeAreaBottom: CGFloat = 0
 }
 
 @MainActor
 private final class Model: ObservableObject {
-  
-  var presentingContentOffset: CGSize
-  var resolved: Resolved?
-  
-  // Ephemeral state
-  var baseOffset: CGSize?
-  // Ephemeral state  
-  var baseTranslation: CGSize?
-  // Ephemeral state
-  var baseCustomHeight: CGFloat?
-  
-  init(presentingContentOffset: CGSize) {
-    self.presentingContentOffset = presentingContentOffset
-  }
-  
+  var presentingOffset: CGFloat = 0
+  var dragStartHeight: CGFloat?
 }
 
-private struct ContentDescriptor: Hashable {
-  
-  var hidingOffset: CGFloat = 0
-  var contentSize: CGSize?
-  var maximumSize: CGSize?
-  var detents: Set<BlanketDetent>?
-}
-
-private enum Phase {
-  case contentMounted
-  case contentUnloaded
-  case contentLoaded
-  case displaying
-}
-
-private struct Pair<T1: Equatable, T2: Equatable>: Equatable {
-  let t1: T1
-  let t2: T2
-}
-
+@available(iOS 18.0, *)
 public struct BlanketModifier<DisplayContent: View>: ViewModifier {
-  
   private let displayContent: () -> DisplayContent
-  
-  @State private var phase: Phase = .contentUnloaded
-  
-  @Binding var isPresented: Bool
-  
-  @State private var contentOffset: CGSize = .zero
-
-  @State private var contentDescriptor: ContentDescriptor = .init()
-
-  @State private var safeAreaInsets: EdgeInsets = .init()
-
-  @State var customHeight: CGFloat?
-
+  private let configuration: BlanketConfiguration
   private let onDismiss: (() -> Void)?
-  
-  @State private var isScrollLockEnabled: Bool = true
-  
-  @StateObject private var model: Model = .init(presentingContentOffset: .zero)
 
-  private let configuration: BlanketConfiguration = .init(mode: .inline(.init()))
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Binding private var isPresented: Bool
+  @State private var presentation = BlanketPresentationState()
+  @State private var descriptor = ContentDescriptor()
+  @State private var selectedDetent: BlanketDetent?
+  @State private var dragHeight: CGFloat?
+  @State private var contentOffset: CGFloat = 0
+  @State private var isScrollLockEnabled = true
+  @StateObject private var model = Model()
 
   public init(
     isPresented: Binding<Bool>,
-    onDismiss: (() -> Void)?,
+    configuration: BlanketConfiguration = .init(),
+    onDismiss: (() -> Void)? = nil,
     @ViewBuilder displayContent: @escaping () -> DisplayContent
   ) {
     self._isPresented = isPresented
+    self.configuration = configuration
     self.onDismiss = onDismiss
     self.displayContent = displayContent
   }
 
+  private var resolved: ResolvedDetents? {
+    guard let contentHeight = descriptor.contentHeight, descriptor.maximumSize.height > 0 else {
+      return nil
+    }
+    return .init(descriptor.detents, context: .init(
+      maxDetentValue: descriptor.maximumSize.height,
+      contentHeight: contentHeight
+    ))
+  }
+
+  private var restingHeight: CGFloat? {
+    guard let resolved else { return nil }
+    return resolved.detents.first(where: { $0.source == selectedDetent })?.height
+      ?? resolved.minimum.height
+  }
+
+  private var hidingOffset: CGFloat {
+    (dragHeight ?? restingHeight ?? descriptor.maximumSize.height) + descriptor.safeAreaBottom
+  }
+
+  private var animation: Animation {
+    reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.45, dampingFraction: 0.85)
+  }
+
   public func body(content: Content) -> some View {
-    
     content
-      .modifier(SizingModifier.init(onChange: { size in
-        
-        contentDescriptor.maximumSize = size
-        
-        dipatchResolve(newValue: contentDescriptor)
-        
-      }))
-      .overlay(
-        Group {
-          if phase == .contentMounted || phase == .contentLoaded || phase == .displaying {
-            _display              
-          }
-        },
-        alignment: .bottom        
-      )
-      .onChange(of: isPresented) { isPresented in 
-        switch isPresented {
-        case true:
-          self.phase = .contentMounted
-        case false:
-          self.phase = .contentUnloaded
-        }
-      }    
-      .onChange(of: phase) { phase in
-        
-        print(phase)
-        
-        switch phase {
-        case .contentMounted:
-          break
-        case .contentLoaded:
-          self.contentOffset.height = contentDescriptor.hidingOffset
-          // to animate sliding in
-          Task { @MainActor in
-            self.phase = .displaying
-          }
-          
-        case .displaying:
-          withAnimation(.spring(response: 0.45)) {
-            contentOffset.height = 0
-          }
-        case .contentUnloaded:
-          break
-        }
-        
-      }    
-      .onChange(
-        of: contentDescriptor
-      ) { newValue in          
-        dipatchResolve(newValue: newValue)          
+      .modifier(SizingModifier { descriptor.maximumSize = $0 })
+      .onGeometryChange(for: CGFloat.self, of: { $0.safeAreaInsets.bottom }) {
+        descriptor.safeAreaBottom = $0
       }
-
-  }
-
-  private var _display: some View {
-        
-    return VStack {
-
-      Spacer()
-        .layoutPriority(1)
-      
-      displayContent()
-        .onPreferenceChange(BlanketContentDetentsPreferenceKey.self, perform: { detents in
-          self.contentDescriptor.detents = detents
-        })
-        .readingGeometry(
-          transform: \.size,
-          target: $contentDescriptor.contentSize
-        )
-        .frame(height: customHeight)
-
-    }
-    .map { view in
-      switch configuration.mode {
-      case .inline:
-        view
-      case .presentation(let presentation):
-        if presentation.handlesOutOfContent {
-          view
-            .contentShape(Rectangle())
+      .overlay(alignment: .bottom) {
+        if presentation.phase != .hidden {
+          display
+        }
+      }
+      .coordinateSpace(name: CoordinateSpaceTag.transition)
+      .onChange(of: isPresented, initial: true) { _, isPresented in
+        if isPresented {
+          present()
         } else {
-          view
-        }
-      }      
-    }
-    .map { view in
-      switch configuration.mode {
-      case .inline:
-        view
-      case .presentation(let presentation):
-        view
-          .background(presentation.backgroundColor.opacity(isPresented ? 0.2 : 0))
-      }
-    }
-    .map { view in
-      if #available(iOS 18, *) {
-        
-        // make this draggable
-        view
-          .gesture(
-            _gesture()
-          )
-      } else {
-        view.gesture(compatibleGesture())
-      }
-    }
-
-    ._animatableOffset(
-      y: contentOffset.height,
-      onUpdate: { height in
-        model.presentingContentOffset.height = height
-    })
-           
-    .readingGeometry(
-      transform: \.safeAreaInsets,
-      target: $safeAreaInsets
-    )
- 
-  }
-  
-  private func dipatchResolve(
-    newValue: ContentDescriptor
-  ) {
-    guard 
-      let contentSize = newValue.contentSize,
-      let detents = newValue.detents,
-      let maximumSize = newValue.maximumSize
-    else { 
-      return
-    }      
-    
-    guard customHeight == nil else { 
-      return
-    }
-    
-    resolve(
-      contentSize: contentSize,
-      detents: detents,
-      maximumSize: maximumSize
-    )
-  }
-
-  private func resolve(
-    contentSize: CGSize,
-    detents: Set<BlanketDetent>,
-    maximumSize: CGSize
-  ) {
-
-    Log.debug("resolve", maximumSize)
-    
-    let usingDetents: Set<BlanketDetent>
-    
-    if detents.isEmpty {
-      usingDetents = .init(arrayLiteral: .content)
-    } else {      
-      usingDetents = consume detents
-    }
-
-    let context = BlanketDetent.Context(
-      maxDetentValue: maximumSize.height - 30,
-      contentHeight: contentSize.height
-    )
-
-    var resolvedDetents = usingDetents.map {
-      return BlanketDetent.Resolved(
-        source: $0,
-        offset: $0.resolve(in: context)
-      )
-    }
-    .sorted(by: { $0.offset < $1.offset })
-
-    // remove duplicates
-    resolvedDetents = resolvedDetents.reduce(into: []) { result, next in
-      if !result.contains(next) {
-        result.append(next)
-      }
-    }
-
-    // remove smaller than content
-    if let contentSizeDetent = resolvedDetents.first(where: { $0.source.node == .content }) {
-      resolvedDetents.removeAll {
-        $0.offset < contentSizeDetent.offset
-      }
-    }
-    
-    let hiddenDetent = BlanketDetent.Resolved(
-      source: .fraction(0),
-      offset: (contentSize.height + safeAreaInsets.bottom)
-    )
-
-    if self.contentDescriptor.hidingOffset != hiddenDetent.offset {      
-      self.contentDescriptor.hidingOffset = hiddenDetent.offset
-    }
-    
-    let newResolved = Resolved(detents: resolvedDetents)
-        
-    if self.model.resolved != newResolved {
-      self.model.resolved = newResolved
-    }
-    
-    if phase == .contentMounted {
-      phase = .contentLoaded        
-    }
-    
-  }
-
-  @available(iOS 18.0, *)
-  @available(macOS, unavailable)
-  @available(tvOS, unavailable)
-  @available(watchOS, unavailable)
-  @available(visionOS, unavailable)
-  private func _gesture()
-    -> ScrollViewInteroperableDragGesture
-  {
-    
-    return ScrollViewInteroperableDragGesture(
-      configuration: .init(
-        ignoresScrollView: false,                
-        targetEdges: .top,              
-        sticksToEdges: false
-      ),
-      isScrollLockEnabled: $isScrollLockEnabled,
-      coordinateSpaceInDragging: .named(_CoordinateSpaceTag.transition),
-      onChange: { value in
-
-        onChange(
-          translation: value.translation
-        )
-
-      },
-      onEnd: { value in
-        
-        onEnd(
-          velocity: .init(
-            dx: value.velocity.width,
-            dy: value.velocity.height
-          )
-        )
-      }
-    )
-  }
-  
-  private func compatibleGesture() -> some Gesture {
-    DragGesture(minimumDistance: 10, coordinateSpace: .named(_CoordinateSpaceTag.transition))
-      .onChanged { value in
-        
-        onChange(
-          translation: value.translation
-        )
-      }
-      .onEnded { value in
-                        
-        onEnd(
-          velocity: .init(
-            dx: value.predictedEndLocation.x - value.location.x,
-            dy: value.predictedEndLocation.y - value.location.y
-          )
-        )
-      }
-  }
-
-  private func onChange(
-    translation: CGSize
-  ) {
-
-    guard let resolved = self.model.resolved else {
-      Log.error("resolved object is not created")
-      return
-    }
-            
-    if model.baseCustomHeight == nil {
-      model.baseCustomHeight = customHeight ?? contentDescriptor.contentSize?.height ?? 0
-    }
-    
-    let baseCustomHeight = model.baseCustomHeight!
-
-    let proposedHeight = baseCustomHeight - translation.height
-
-    let lowestDetent = resolved.minDetent.offset
-    let highestDetent = resolved.maxDetent.offset
-    
-    if proposedHeight < lowestDetent {
-      
-      // moving view
-      
-      if model.baseOffset == nil {
-        model.baseOffset = model.presentingContentOffset
-      }
-      
-      if model.baseTranslation == nil {
-        model.baseTranslation = translation
-      }
-      
-      let baseOffset = model.baseOffset!
-      let baseTranslation = model.baseTranslation!
-
-      Log.debug("Use intrinsict height")
-
-      // release hard frame
-      customHeight = nil
-      isScrollLockEnabled = true
-
-      let proposedOffset = CGSize(
-        width: baseOffset.width + translation.width - baseTranslation.width,
-        height: baseOffset.height + translation.height - baseTranslation.height
-      )
-      
-//      withAnimation(.interactiveSpring()) {
-
-        contentOffset.height = rubberBand(
-          value: proposedOffset.height,
-          min: 0,
-          max: .infinity,
-          bandLength: 50
-        )
-
-//      }
-
-    } else if proposedHeight > highestDetent {
-      
-      // reaching max
-      
-      // set hard frame
-      customHeight = rubberBand(value: proposedHeight, min: highestDetent, max: highestDetent, bandLength: 20)
-      
-      isScrollLockEnabled = false
-
-    } else {
-
-      // stretching view
-      contentOffset.height = 0
-                  
-      isScrollLockEnabled = true
-      
-      // set hard frame
-      customHeight = proposedHeight
-    }
-
-  }
-
-  private func onEnd(velocity: CGVector) {
-        
-    model.baseOffset = nil
-    model.baseTranslation = nil
-    model.baseCustomHeight = nil
-    
-    guard let resolved = self.model.resolved else { return }    
-    
-    if let customHeight = self.customHeight {
-      Log.debug("End - stretching")
-
-      let nearest = resolved.nearestDetent(to: customHeight, velocity: velocity.dy)
-      
-      Log.debug("\(nearest)")
-
-      let distance = CGSize(
-        width: 0,
-        height: nearest.offset - customHeight
-      )
-
-      let mappedVelocity = CGVector(
-        dx: velocity.dx / distance.width,
-        dy: velocity.dy / distance.height
-      )
-
-      var animationY: Animation {
-        .interpolatingSpring(
-          mass: 1,
-          stiffness: 200,
-          damping: 20,
-          initialVelocity: -mappedVelocity.dy
-        )
-      }
-      
-      @MainActor
-      func animation() {
-        if nearest == resolved.minDetent {
-          self.customHeight = nil
-        } else {
-          self.customHeight = nearest.offset
+          dismiss()
         }
       }
+      .onChange(of: descriptor) { _, _ in resolve() }
+  }
 
-      if #available(iOS 17.0, *) {
-
-        withAnimation(animationY) {
-          animation()
-        } completion: {
-
-        }
-
-      } else {
-
-        withAnimation(
-          animationY
-        ) {
-          animation()
-        }
+  private var display: some View {
+    ZStack(alignment: .bottom) {
+      if case .presentation(let configuration) = configuration.mode {
+        configuration.backgroundColor
+          .opacity(presentation.phase == .presented ? 1 : 0)
+          .animation(animation, value: presentation.phase)
+          .contentShape(Rectangle())
+          .onTapGesture { isPresented = false }
+          .allowsHitTesting(configuration.handlesOutOfContent)
+          .accessibilityHidden(true)
       }
 
-    } else {
-
-      Log.debug("End - moving", velocity.dy, contentOffset.height)
-
-      let targetOffset: CGSize
-      let willHide: Bool
-
-      if velocity.dy > 50 || contentOffset.height > 50 {
-        
-        // hides
-        targetOffset = .init(width: 0, height: contentDescriptor.hidingOffset)
-        willHide = true
-                
-      } else {
-        
-        willHide = false
-        targetOffset = .zero
-      }
-
-      let distance = CGSize(
-        width: targetOffset.width - contentOffset.width,
-        height: targetOffset.height - contentOffset.height
-      )
-
-      let mappedVelocity = CGVector(
-        dx: velocity.dx / distance.width,
-        dy: velocity.dy / distance.height
-      )
-
-      var animationY: Animation {
-        .interpolatingSpring(
-          mass: 1,
-          stiffness: 200,
-          damping: 20,
-          initialVelocity: mappedVelocity.dy
-        )
-      }
-      
-      @MainActor
-      func animation() {
-        contentOffset.height = targetOffset.height        
-      }
-
-      if #available(iOS 17.0, *) {
-
-        withAnimation(animationY) {
-          animation()
-        } completion: {
-          if willHide {
-            isPresented = false
+      ContentSizingView(onChange: { descriptor.contentHeight = $0.height }) {
+        displayContent()
+          .onPreferenceChange(BlanketContentDetentsPreferenceKey.self) {
+            descriptor.detents = $0
           }
-        }
-
-      } else {
-        
-        // TODO: update isPresented
-
-        withAnimation(
-          animationY
-        ) {
-          animation()
-        }
       }
-
+      .frame(height: dragHeight ?? restingHeight)
+      .frame(maxWidth: .infinity)
+      .gesture(ScrollViewInteroperableDragGesture(
+        configuration: .init(ignoresScrollView: false, targetEdges: .top, sticksToEdges: false),
+        isScrollLockEnabled: $isScrollLockEnabled,
+        coordinateSpaceInDragging: .named(CoordinateSpaceTag.transition),
+        onChange: { onChange(translation: $0.translation) },
+        onEnd: { onEnd(velocity: $0.velocity.height) }
+      ))
+      ._animatableOffset(y: contentOffset) { model.presentingOffset = $0 }
+      .opacity(presentation.phase == .measuring ? 0 : 1)
+      .accessibilityAction(.escape) { isPresented = false }
     }
-    
-    isScrollLockEnabled = false
-
-    // managing scrollview
-    
-//    if let customHeight = self.customHeight {      
-//      
-//      let currentRange = resolved.range(for: customHeight)
-//      
-//      Log.debug(customHeight, resolved.maxDetent.offset)
-//      
-//      if customHeight >= resolved.maxDetent.offset {
-//        isScrollLockEnabled = false
-//      } else {
-//        isScrollLockEnabled = true
-//      }
-//      
-//    } else {
-//      isScrollLockEnabled = true
-//    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    .allowsHitTesting(presentation.phase == .presented)
+    .accessibilityHidden(presentation.phase != .presented)
   }
 
+  private func present() {
+    if presentation.phase == .hidden {
+      descriptor.contentHeight = nil
+      descriptor.detents = []
+    }
+    model.dragStartHeight = nil
+    selectedDetent = nil
+    dragHeight = nil
+    isScrollLockEnabled = true
+    presentation.present()
+    resolve()
+  }
+
+  private func resolve() {
+    guard let resolved else { return }
+    if presentation.phase == .measuring || presentation.phase == .entering {
+      selectedDetent = resolved.minimum.source
+    } else if let selectedDetent, !resolved.detents.contains(where: { $0.source == selectedDetent }) {
+      self.selectedDetent = resolved.nearest(to: selectedDetent.resolve(in: .init(
+        maxDetentValue: descriptor.maximumSize.height,
+        contentHeight: descriptor.contentHeight ?? 0
+      ))).source
+    } else if selectedDetent == nil {
+      selectedDetent = resolved.minimum.source
+    }
+    if model.dragStartHeight == nil {
+      isScrollLockEnabled = (restingHeight ?? 0) < resolved.maximum.height
+    }
+    guard let generation = presentation.prepareToEnter() else { return }
+    contentOffset = hidingOffset
+    model.presentingOffset = contentOffset
+    Task { @MainActor in
+      await Task.yield()
+      guard isPresented, presentation.generation == generation else { return }
+      withAnimation(animation) {
+        if presentation.finishEntering(generation: generation) {
+          contentOffset = 0
+        }
+      }
+    }
+  }
+
+  private func dismiss() {
+    guard let generation = presentation.dismiss() else { return }
+    model.dragStartHeight = nil
+    withAnimation(animation, completionCriteria: .removed) {
+      contentOffset = hidingOffset
+    } completion: {
+      guard presentation.finishDismissal(generation: generation) else { return }
+      selectedDetent = nil
+      dragHeight = nil
+      contentOffset = 0
+      model.presentingOffset = 0
+      onDismiss?()
+    }
+  }
+
+  private func onChange(translation: CGSize) {
+    guard presentation.phase == .presented, let resolved else { return }
+    if model.dragStartHeight == nil {
+      guard abs(translation.height) > abs(translation.width) else { return }
+      model.dragStartHeight = (dragHeight ?? restingHeight ?? 0) - model.presentingOffset
+    }
+    let proposed = (model.dragStartHeight ?? 0) - translation.height
+    if proposed < resolved.minimum.height {
+      dragHeight = resolved.minimum.height
+      contentOffset = resolved.minimum.height - proposed
+    } else {
+      contentOffset = 0
+      dragHeight = rubberBand(
+        value: proposed, min: resolved.minimum.height, max: resolved.maximum.height, bandLength: 20
+      )
+    }
+    isScrollLockEnabled = proposed < resolved.maximum.height
+  }
+
+  private func onEnd(velocity: CGFloat) {
+    guard model.dragStartHeight != nil, let resolved else { return }
+    model.dragStartHeight = nil
+    if contentOffset > 0,
+      velocity > 300 || contentOffset > min(100, max(30, resolved.minimum.height * 0.25))
+    {
+      isPresented = false
+      return
+    }
+    let height = dragHeight ?? restingHeight ?? resolved.minimum.height
+    let nearest = resolved.nearest(to: height, velocity: velocity)
+    let springVelocity = blanketSpringVelocity(-velocity, distance: nearest.height - height)
+    let snap: Animation = reduceMotion ? animation : .interpolatingSpring(
+      mass: 1, stiffness: 200, damping: 25, initialVelocity: springVelocity
+    )
+    withAnimation(snap) {
+      selectedDetent = nearest.source
+      dragHeight = nil
+      contentOffset = 0
+    }
+    isScrollLockEnabled = nearest.height < resolved.maximum.height
+  }
 }
 
-private enum _CoordinateSpaceTag: Hashable {
-//  case pointInView
+private enum CoordinateSpaceTag: Hashable {
   case transition
 }
 
+@available(iOS 18.0, *)
 extension View {
-
-  public func blanket<Item, Content>(
-    item: Binding<Item?>,
-    onDismiss: (() -> Void)? = nil,
-    @ViewBuilder content: @escaping (Item) -> Content
-  ) -> some View where Item: Identifiable, Content: View {
-
-    self.modifier(
-      BlanketModifier(
-        isPresented: .init(
-          get: { item.wrappedValue != nil },
-          set: { if !$0 { item.wrappedValue = nil } }
-        ),
-        onDismiss: onDismiss,
-        displayContent: {
-          if let item = item.wrappedValue {
-            content(item)
-          }
-        }
-      )
-    )
-
-  }
-
-  public func blanket<Content>(
+  /// Displays a blanket within this view's bounds. An empty detent set uses `.content`.
+  public func blanket<Content: View>(
     isPresented: Binding<Bool>,
+    configuration: BlanketConfiguration = .init(),
     onDismiss: (() -> Void)? = nil,
     @ViewBuilder content: @escaping () -> Content
-  ) -> some View where Content: View {
-
-    self.modifier(
-      BlanketModifier(isPresented: isPresented, onDismiss: onDismiss, displayContent: content)
-    )
-
+  ) -> some View {
+    modifier(BlanketModifier(
+      isPresented: isPresented,
+      configuration: configuration,
+      onDismiss: onDismiss,
+      displayContent: content
+    ))
   }
 
+  /// Replacing an item's identity replaces the blanket's content without dismissing it.
+  public func blanket<Item: Identifiable, Content: View>(
+    item: Binding<Item?>,
+    configuration: BlanketConfiguration = .init(),
+    onDismiss: (() -> Void)? = nil,
+    @ViewBuilder content: @escaping (Item) -> Content
+  ) -> some View {
+    modifier(ItemBlanketModifier(
+      item: item, configuration: configuration, onDismiss: onDismiss, displayContent: content
+    ))
+  }
 }
 
-private struct BlanketContentWrapperView<Content: View>: View {
-  
-  let content: Content
-  let detents: Set<BlanketDetent>
-  
+@available(iOS 18.0, *)
+private struct ItemBlanketModifier<Item: Identifiable, DisplayContent: View>: ViewModifier {
+  @Binding var item: Item?
+  let configuration: BlanketConfiguration
+  let onDismiss: (() -> Void)?
+  @ViewBuilder let displayContent: (Item) -> DisplayContent
+  @State private var retainedItem = ItemCache<Item>()
+
   init(
-    content: Content,
-    detents: Set<BlanketDetent>
+    item: Binding<Item?>,
+    configuration: BlanketConfiguration,
+    onDismiss: (() -> Void)?,
+    @ViewBuilder displayContent: @escaping (Item) -> DisplayContent
   ) {
-    self.content = content
-    self.detents = detents
+    self._item = item
+    self.configuration = configuration
+    self.onDismiss = onDismiss
+    self.displayContent = displayContent
   }
-  
-  var body: some View {
+
+  func body(content: Content) -> some View {
+    let displayedItem = item ?? retainedItem.value
     content
-      .preference(key: BlanketContentDetentsPreferenceKey.self, value: detents)
+      .blanket(isPresented: .init(
+        get: { item != nil },
+        set: { if !$0 { item = nil } }
+      ), configuration: configuration, onDismiss: {
+        retainedItem.value = nil
+        onDismiss?()
+      }) {
+        if let displayedItem {
+          displayContent(displayedItem)
+            .id(displayedItem.id)
+        }
+      }
+      .onReceive(Just(item)) { item in
+        if let item { retainedItem.value = item }
+      }
   }
-  
+}
+
+@MainActor
+private final class ItemCache<Item> {
+  // Retain the latest value for the exit animation without requiring Item to be Equatable.
+  var value: Item?
 }
 
 enum BlanketContentDetentsPreferenceKey: PreferenceKey {
-  
-  static var defaultValue: Set<BlanketDetent> {
-    .init()
-  }
-  
+  static var defaultValue: Set<BlanketDetent> { [] }
+
   static func reduce(value: inout Set<BlanketDetent>, nextValue: () -> Set<BlanketDetent>) {
-    value = nextValue()
+    value.formUnion(nextValue())
   }
-  
 }
 
 extension View {
-  
   public func blanketContentDetents(
-    _ firstDetent: BlanketDetent,
-    _ detents: BlanketDetent...
+    _ firstDetent: BlanketDetent, _ detents: BlanketDetent...
   ) -> some View {
-    self.blanketContentDetents(CollectionOfOne(firstDetent) + detents) 
+    blanketContentDetents(Set(CollectionOfOne(firstDetent) + detents))
   }
-  
-  public func blanketContentDetents(
-    _ detent: BlanketDetent
-  ) -> some View {
-    self.blanketContentDetents(CollectionOfOne(detent))        
+
+  public func blanketContentDetents(_ detent: BlanketDetent) -> some View {
+    blanketContentDetents(Set([detent]))
   }
-  
-  public func blanketContentDetents(
-    _ detents: some Collection<BlanketDetent>
-  ) -> some View {
-    self.blanketContentDetents(Set.init(detents))
+
+  public func blanketContentDetents(_ detents: some Collection<BlanketDetent>) -> some View {
+    blanketContentDetents(Set(detents))
   }
-    
-  public func blanketContentDetents(
-    _ detens: Set<BlanketDetent>
-  ) -> some View {
-    BlanketContentWrapperView(
-      content: self,
-      detents: detens
-    )
+
+  public func blanketContentDetents(_ detents: Set<BlanketDetent>) -> some View {
+    preference(key: BlanketContentDetentsPreferenceKey.self, value: detents)
   }
-  
 }

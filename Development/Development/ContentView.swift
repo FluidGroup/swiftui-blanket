@@ -1,236 +1,166 @@
-//
-//  ContentView.swift
-//  Development
-//
-//  Created by Muukii on 2024/07/27.
-//
-
 import SwiftUI
 import SwiftUIBlanket
 
 struct ContentView: View {
   var body: some View {
     NavigationStack {
-      Form {
-        Section {
-          NavigationLink("[.content]", destination: InlinePreview(detents: [.content]))
-          NavigationLink("[.content, .fraction(1)]", destination: InlinePreview(detents: [.content, .fraction(1)]))
+      List {
+        Section("Inline") {
+          NavigationLink("Content height") {
+            BlanketPreview(detents: [.content])
+          }
+          NavigationLink("Multiple detents") {
+            BlanketPreview(detents: [.height(240), .content, .fraction(1)])
+          }
+          NavigationLink("Initially presented") {
+            BlanketPreview(detents: [.content, .fraction(1)], initiallyPresented: true)
+          }
+        }
+        Section("Presentation") {
+          NavigationLink("Tap the backdrop to dismiss") {
+            BlanketPreview(
+              detents: [.content, .fraction(1)],
+              configuration: .init(mode: .presentation(.init()))
+            )
+          }
+        }
+        Section("Items") {
+          NavigationLink("Replace content while presented") { ItemPreview() }
         }
       }
+      .navigationTitle("SwiftUI Blanket")
     }
-    
   }
 }
 
-struct SheetContent: View {
-  
-  @State var isExpanded = false
-  
-  private let title: String
-  
-  init(title: String) {
-    self.title = title
+private struct BlanketPreview: View {
+  let detents: Set<BlanketDetent>
+  var configuration = BlanketConfiguration()
+  @State private var isPresented: Bool
+  @State private var dismissalCount = 0
+
+  init(
+    detents: Set<BlanketDetent>,
+    configuration: BlanketConfiguration = .init(),
+    initiallyPresented: Bool = false
+  ) {
+    self.detents = detents
+    self.configuration = configuration
+    self._isPresented = .init(initialValue: initiallyPresented)
   }
-  
+
   var body: some View {
-    ZStack {
-      RoundedRectangle(cornerRadius: 20).fill(.background)
-      VStack {
+    VStack {
+      HStack {
+        Button("Show") { isPresented = true }
+          .accessibilityIdentifier("show-blanket")
+        Button("Dismiss") { isPresented = false }
+          .accessibilityIdentifier("dismiss-blanket")
+      }
+      Text("Presented: \(isPresented.description) · Dismissals: \(dismissalCount)")
+        .font(.caption)
+        .accessibilityIdentifier("presentation-status")
+      Spacer()
+      Text("Drag the blanket. At its largest detent, scroll the list.")
+        .multilineTextAlignment(.center)
+      Spacer()
+    }
+    .padding()
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.purple.opacity(0.15))
+    .blanket(isPresented: $isPresented, configuration: configuration, onDismiss: {
+      dismissalCount += 1
+    }) {
+      SheetContent(title: "This is a blanket", onClose: { isPresented = false })
+        .blanketContentDetents(detents)
+    }
+    .navigationTitle("Blanket")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+private struct SheetContent: View {
+  let title: String
+  let onClose: () -> Void
+  @State private var isExpanded = false
+
+  var body: some View {
+    VStack(spacing: 12) {
+      Capsule()
+        .fill(.secondary)
+        .frame(width: 36, height: 5)
+        .accessibilityHidden(true)
+      HStack {
+        Text(title).font(.headline)
+        Spacer()
+        Button("Close", action: onClose)
+      }
+      ScrollView(.horizontal) {
         HStack {
-          VStack(alignment: .leading) {
-            
-            Text(title)
-              .font(.title)
-            
-            HStack {
-              RoundedRectangle(cornerRadius: 8)
-                .fill(.tertiary)
-                .frame(height: 100)
-              
-              ScrollView {
-                VStack {
-                  ForEach(0..<50) { index in
-                    RoundedRectangle(cornerRadius: 8)
-                      .fill(.tertiary)
-                      .frame(height: 30)
-                  }
-                }
-              }
-              .frame(height: 300)
-            }
-            
-            ScrollView(.horizontal) {
-              HStack {
-                ForEach(0..<50) { index in
-                  RoundedRectangle(cornerRadius: 8)
-                    .fill(.tertiary)
-                    .frame(width: 60, height: 60)
-                }
-              }
-            }
-            
-            if isExpanded {
-              RoundedRectangle(cornerRadius: 8)
-                .fill(.tertiary)
-                .frame(height: 100)          
-            }
-            
-            HStack {
-              Spacer()
-              Button("Detail") {
-                withAnimation(.spring) {
-                  isExpanded.toggle()
-                }
-              }
-              .buttonBorderShape(.roundedRectangle)
-            }
+          ForEach(0..<20) { index in
+            Text("\(index)")
+              .frame(width: 60, height: 60)
+              .background(.orange.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
           }
-          Spacer(minLength: 0)
         }
-        .padding()
-        Spacer(minLength: 0)
+      }
+      ScrollView {
+        LazyVStack {
+          ForEach(0..<50) { index in
+            Text("Row \(index)")
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(8)
+              .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+          }
+        }
+      }
+      .frame(idealHeight: 200)
+      if isExpanded {
+        Text("The content detent follows changes to the content's ideal height.")
+          .frame(height: 80)
+      }
+      Button(isExpanded ? "Less content" : "More content") {
+        withAnimation { isExpanded.toggle() }
       }
     }
-    .foregroundStyle(.primary)
-    .backgroundStyle(.orange)
-    .tint(.orange)
-    .clipped()
-    .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 0)
+    .padding()
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+    .clipShape(RoundedRectangle(cornerRadius: 20))
+    .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
     .padding(8)
   }
 }
 
-struct InlinePreview: View {
-  
-  @State var isPresented = false
-  
-  private let detents: Set<BlanketDetent>
-  
-  init(detents: Set<BlanketDetent>) {
-    self.detents = detents
+private struct ItemPreview: View {
+  private struct Item: Identifiable {
+    let id = UUID()
+    let title: String
   }
-  
+
+  @State private var item: Item?
+  @State private var dismissalCount = 0
+
   var body: some View {
     VStack {
-      Button("Show") {
-        isPresented.toggle()
+      HStack {
+        Button("Show A") { item = .init(title: "Blanket A") }
+        Button("Show B") { item = .init(title: "Blanket B") }
+        Button("Clear") { item = nil }
       }
-      Text("Showing : \(isPresented.description)")
-      Rectangle()
-        .fill(Color.purple)
-        .ignoresSafeArea()
+      Text("Dismissals: \(dismissalCount)")
+      Spacer()
     }
-    .blanket(isPresented: $isPresented) {
-      SheetContent(title: "This is a blanket")
-        .blanketContentDetents(detents)
+    .padding()
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.orange.opacity(0.1))
+    .blanket(item: $item, onDismiss: { dismissalCount += 1 }) { item in
+      SheetContent(title: item.title, onClose: { self.item = nil })
+        .blanketContentDetents(.content, .fraction(1))
     }
+    .navigationTitle("Item replacement")
+    .navigationBarTitleDisplayMode(.inline)
   }
 }
 
-#Preview("isPresented default"){
-  
-  return InlinePreview(detents: [])
-  
-}
-
-#Preview("[.content, .fraction(1)]") {
-  return InlinePreview(detents: [.content, .fraction(1)])
-}
-
-#Preview("item"){
-  
-  struct Item: Identifiable {
-    let id = UUID()
-    let title: String
-  }
-  
-  struct Preview: View {
-    
-    @State var item: Item?
-    
-    var body: some View {
-      VStack {
-        Button("Show A") {
-          item = .init(title: "This is a blanket A")
-        }
-        Button("Show B") {
-          item = .init(title: "This is a blanket B")
-        }
-        Button("Show C") {
-          item = .init(title: "This is a blanket C")
-        }
-        Rectangle()
-          .fill(Color.purple)
-          .ignoresSafeArea()
-      }
-      .blanket(item: $item) { item in
-        SheetContent(
-          title: item.title
-        )
-      }
-    }
-  }
-  
-  return Preview()
-}
-
-@available(iOS 16.0, *)
-#Preview("Sheet"){
-  
-  struct Item: Identifiable {
-    let id = UUID()
-    let title: String
-  }
-    
-  struct InlineView: View {
-        
-    @State var item: Item?
-    
-    var body: some View {
-      VStack {
-        
-        Button("Auto") {
-          Task {
-            
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            
-            item = .init(title: "1")
-            
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            
-            item = .init(title: "2")
-            
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            
-            item = .init(title: "3")
-            
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            
-            item = nil
-            
-          }
-        }
-        
-        Button("Show A") {
-          item = .init(title: "This is a blanket A")
-        }
-        Button("Show B") {
-          item = .init(title: "This is a blanket B")
-        }
-        Button("Show C") {
-          item = .init(title: "This is a blanket C")
-        }
-        Rectangle()
-          .fill(Color.purple)
-          .ignoresSafeArea()
-      }
-      .sheet(item: $item) { item in 
-        SheetContent(
-          title: item.title
-        )
-      }
-    }
-  }
-
-  return InlineView()
-}
+#Preview { ContentView() }
